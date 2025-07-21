@@ -4,20 +4,17 @@ import (
 	"context"
 )
 
-type ExtractionResult struct {
-	Companies  []string `json:"companies"`
-	VATNumbers []string `json:"vat_numbers"`
-	Persons    []string `json:"persons"`
-}
+// ExtractionResult maps each entity to its extracted information.
+type ExtractionResult map[string]string
 
-// ExtractEntitiesFromText is a placeholder for AI extraction logic.
+// ExtractEntities takes a context, the PDF text, and a list of entities (person, VAT, company, industry, etc.) to extract info about.
 // In production, this would call an external AI API (e.g., OpenAI, Gemini).
-func ExtractEntitiesFromText(ctx context.Context, text string) (*ExtractionResult, error) {
+func ExtractEntities(ctx context.Context, text string, entities []string) (ExtractionResult, error) {
 	// TODO: Integrate with real AI API
-	// For now, return dummy data
-	return &ExtractionResult{
-		Companies:  []string{"Example Company"},
-		VATNumbers: []string{"12345678"},
-		Persons:    []string{"John Doe"},
-	}, nil
+	// For now, return dummy data for each entity
+	result := make(ExtractionResult)
+	for _, entity := range entities {
+		result[entity] = "Sample extracted info for: " + entity
+	}
+	return result, nil
 }

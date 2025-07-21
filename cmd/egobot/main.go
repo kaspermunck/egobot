@@ -17,7 +17,14 @@ func NewRouter() *gin.Engine {
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "pong"})
 	})
-	r.GET("/extract", func(c *gin.Context) {
+	r.POST("/extract", func(c *gin.Context) {
+		var req struct {
+			Entities []string `json:"entities"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+			return
+		}
 		f, err := os.Open("statstidende_sample.pdf")
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -29,7 +36,7 @@ func NewRouter() *gin.Engine {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		result, err := ai.ExtractEntitiesFromText(context.Background(), text)
+		result, err := ai.ExtractEntities(context.Background(), text, req.Entities)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
