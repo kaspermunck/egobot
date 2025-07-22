@@ -19,11 +19,9 @@ if ! railway whoami &> /dev/null; then
     railway login
 fi
 
-# Create new project if it doesn't exist
-if ! railway project &> /dev/null; then
-    echo "📁 Creating new Railway project..."
-    railway init
-fi
+# Link to existing egobot project
+echo "🔗 Linking to existing egobot project..."
+railway link
 
 # Set environment variables (you'll need to set these in Railway dashboard)
 echo "⚙️  Setting up environment variables..."

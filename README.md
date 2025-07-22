@@ -199,9 +199,6 @@ egobot/
 # Install Railway CLI
 npm install -g @railway/cli
 
-# Setup Railway project (first time only)
-./railway-setup.sh
-
 # Deploy with one command
 ./deploy.sh
 ```
@@ -232,8 +229,8 @@ SCHEDULE_CRON=0 6 * * *
 
 **"No service could be found" error:**
 ```bash
-# Run the setup script first
-./railway-setup.sh
+# Link to your existing project
+railway link
 
 # Then deploy
 ./deploy.sh
@@ -246,7 +243,6 @@ railway login
 
 **"Project not found" error:**
 ```bash
-railway init
 railway link
 ```
 
