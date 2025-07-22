@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"egobot/internal/ai"
 
@@ -13,8 +14,26 @@ import (
 
 func NewRouter() *gin.Engine {
 	r := gin.Default()
+
+	// Health check endpoint for Railway
 	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "pong"})
+		c.JSON(http.StatusOK, gin.H{
+			"message":   "pong",
+			"status":    "healthy",
+			"timestamp": time.Now().Format("2006-01-02 15:04:05"),
+		})
+	})
+
+	// Root endpoint
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "egobot - PDF Analysis Service",
+			"version": "1.0.0",
+			"endpoints": []string{
+				"GET /ping - Health check",
+				"POST /extract - Extract entities from PDF",
+			},
+		})
 	})
 	r.POST("/extract", func(c *gin.Context) {
 		// Parse multipart form

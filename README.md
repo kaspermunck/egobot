@@ -183,6 +183,59 @@ egobot/
 └── statstidende_sample.pdf     # Sample PDF file
 ```
 
+## Production Deployment
+
+### **🚀 Railway Deployment (Recommended)**
+
+**Why Railway?**
+- ✅ **Free tier**: 500 hours/month (perfect for daily cron)
+- ✅ **Single command**: `./deploy.sh`
+- ✅ **Cron support**: Built-in scheduled jobs
+- ✅ **Environment variables**: Easy management
+- ✅ **Git integration**: Automatic deployments
+
+**Quick Deploy:**
+```bash
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Deploy with one command
+./deploy.sh
+```
+
+**Environment Variables to Set in Railway Dashboard:**
+```bash
+# Required
+IMAP_USERNAME=your-email@gmail.com
+IMAP_PASSWORD=your-app-password
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=your-email@gmail.com
+SMTP_TO=recipient@example.com
+OPENAI_API_KEY=your-openai-key
+ENTITIES_TO_TRACK=["Danske Bank", "fintech", "bankruptcy"]
+
+# Optional
+OPENAI_STUB=false
+SCHEDULE_CRON=0 6 * * *
+```
+
+**Cron Job:**
+- **Schedule**: Daily at 6:00 AM CET
+- **Command**: `go run ./cmd/processor -once`
+- **Cost**: ~1 minute per day = 30 hours/month (well within free tier)
+
+### **🔧 Alternative: Render**
+
+If you prefer Render:
+```bash
+# Install Render CLI
+npm install -g @render/cli
+
+# Deploy
+render deploy
+```
+
 ## Dependencies
 
 - `github.com/gin-gonic/gin` - HTTP server
