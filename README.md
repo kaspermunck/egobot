@@ -12,6 +12,8 @@ A Go application that extracts information about specific entities (companies, V
 
 ## Quick Start
 
+### For Manual Testing (Existing API)
+
 1. **Set up OpenAI API key**:
    ```bash
    export OPENAI_API_KEY=sk-your-key-here
@@ -27,6 +29,22 @@ A Go application that extracts information about specific entities (companies, V
    curl -X POST http://localhost:8080/extract \
      -F "file=@statstidende_sample.pdf" \
      -F 'entities=["Danske Bank","12345678","fintech","John Doe"]'
+   ```
+
+### For Automated Email Processing (New Feature)
+
+1. **Set up email credentials**:
+   ```bash
+   export IMAP_USERNAME=your-email@gmail.com
+   export IMAP_PASSWORD=your-app-password
+   export SMTP_FROM=your-email@gmail.com
+   export SMTP_TO=recipient@example.com
+   export OPENAI_STUB=true  # Use stubbed responses for testing
+   ```
+
+2. **Start the email processor** (coming soon):
+   ```bash
+   go run ./cmd/processor
    ```
 
 ## API Usage
@@ -61,9 +79,17 @@ A Go application that extracts information about specific entities (companies, V
 
 ```
 egobot/
-├── cmd/egobot/main.go          # Application entry point
+├── cmd/
+│   ├── egobot/main.go          # HTTP API server
+│   └── processor/main.go       # Email processor (coming soon)
 ├── internal/
-│   ├── ai/extractor.go         # OpenAI integration
+│   ├── ai/
+│   │   ├── extractor.go        # OpenAI integration
+│   │   ├── stub_extractor.go   # Stubbed responses for testing
+│   │   └── stub_extractor_test.go
+│   ├── config/
+│   │   ├── config.go           # Configuration management
+│   │   └── config_test.go
 │   └── pdf/reader.go           # PDF text extraction
 ├── go.mod                      # Dependencies
 └── statstidende_sample.pdf     # Sample PDF file
@@ -74,4 +100,7 @@ egobot/
 - `github.com/gin-gonic/gin` - HTTP server
 - `github.com/ledongthuc/pdf` - PDF text extraction
 - `github.com/sashabaranov/go-openai` - OpenAI API client
-- `go.uber.org/fx` - Dependency injection 
+- `go.uber.org/fx` - Dependency injection
+- `github.com/emersion/go-imap` - IMAP email client
+- `github.com/jordan-wright/email` - SMTP email sending
+- `github.com/robfig/cron/v3` - Scheduled job processing 
