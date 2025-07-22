@@ -19,32 +19,16 @@ if ! railway whoami &> /dev/null; then
     railway login
 fi
 
-# Link to existing egobot project
+# Link to existing egobot project (non-interactive)
 echo "🔗 Linking to existing egobot project..."
-railway link
+if [ ! -f ".railway/project.json" ]; then
+    echo "No Railway project linked. Please run 'railway link' manually first."
+    exit 1
+fi
 
-# Set environment variables (you'll need to set these in Railway dashboard)
-echo "⚙️  Setting up environment variables..."
-echo "Please set the following environment variables in Railway dashboard:"
-echo ""
-echo "Required variables:"
-echo "- IMAP_USERNAME=your-email@gmail.com"
-echo "- IMAP_PASSWORD=your-app-password"
-echo "- SMTP_USERNAME=your-email@gmail.com"
-echo "- SMTP_PASSWORD=your-app-password"
-echo "- SMTP_FROM=your-email@gmail.com"
-echo "- SMTP_TO=recipient@example.com"
-echo "- OPENAI_API_KEY=your-openai-key"
-echo "- ENTITIES_TO_TRACK=[\"Danske Bank\", \"fintech\", \"bankruptcy\"]"
-echo ""
-echo "Optional variables:"
-echo "- OPENAI_STUB=false (set to true for testing)"
-echo "- SCHEDULE_CRON=0 6 * * * (daily at 6am CET)"
-echo ""
-
-# Deploy to Railway
+# Deploy to Railway (non-interactive)
 echo "🚀 Deploying to Railway..."
-railway up
+railway up --detach
 
 echo "✅ Deployment complete!"
 echo ""
