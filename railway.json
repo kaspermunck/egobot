@@ -4,14 +4,10 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "go run ./cmd/processor",
+    "startCommand": "go run ./cmd/egobot",
     "healthcheckPath": "/ping",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
-  },
-  "cron": {
-    "schedule": "0 6 * * *",
-    "command": "go run ./cmd/processor -once"
   }
 } 
