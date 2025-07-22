@@ -19,13 +19,6 @@ if ! railway whoami &> /dev/null; then
     railway login
 fi
 
-# Link to existing egobot project (non-interactive)
-echo "🔗 Linking to existing egobot project..."
-if [ ! -f ".railway/project.json" ]; then
-    echo "No Railway project linked. Please run 'railway link' manually first."
-    exit 1
-fi
-
 # Deploy to Railway (non-interactive)
 echo "🚀 Deploying to Railway..."
 railway up --detach
