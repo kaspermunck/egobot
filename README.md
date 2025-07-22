@@ -33,36 +33,67 @@ A Go application that extracts information about specific entities (companies, V
 
 ### For Automated Email Processing (Phase 3 - Complete System)
 
-1. **Set up email credentials**:
-   ```bash
-   export IMAP_USERNAME=your-email@gmail.com
-   export IMAP_PASSWORD=your-app-password
-   export SMTP_FROM=your-email@gmail.com
-   export SMTP_TO=recipient@example.com
-   export OPENAI_STUB=true  # Use stubbed responses for testing
-   export SCHEDULE_CRON="0 0 9 * * *"  # Daily at 9 AM
-   ```
+#### **📧 Email Configuration Setup**
 
-2. **Run the email processor**:
-   ```bash
-   # Run once immediately
-   go run ./cmd/processor -once
-   
-   # Show schedule information
-   go run ./cmd/processor -schedule
-   
-   # Start scheduled processing (runs continuously)
-   go run ./cmd/processor
-   ```
+**Step 1: Enable 2-Factor Authentication**
+1. Go to [Google Account Security](https://myaccount.google.com/security)
+2. Enable "2-Step Verification" (required for App Passwords)
 
-3. **Complete system components**:
-   - ✅ **IMAP Email Fetcher**: Connects to email servers and finds PDF attachments
-   - ✅ **SMTP Email Sender**: Sends formatted HTML emails with analysis results
-   - ✅ **HTML Templates**: Beautiful email formatting with entity results
-   - ✅ **Error Handling**: Comprehensive error notifications
-   - ✅ **Email Processor**: Orchestrates fetching, analysis, and sending
-   - ✅ **Cron Scheduler**: Automated scheduling with retry logic
-   - ✅ **Command Line Tool**: `cmd/processor` with multiple modes
+**Step 2: Generate App Passwords**
+1. Go to [App Passwords](https://myaccount.google.com/apppasswords)
+2. Generate two app passwords:
+   - **IMAP**: Select "Mail" → "Other (Custom name)" → Name it "egobot-imap"
+   - **SMTP**: Select "Mail" → "Other (Custom name)" → Name it "egobot-smtp"
+3. Copy both 16-character passwords
+
+**Step 3: Set Environment Variables**
+```bash
+# IMAP Configuration (for fetching emails)
+export IMAP_USERNAME=your-email@gmail.com
+export IMAP_PASSWORD=your-16-char-imap-app-password
+
+# SMTP Configuration (for sending results)
+export SMTP_USERNAME=your-email@gmail.com
+export SMTP_PASSWORD=your-16-char-smtp-app-password
+export SMTP_FROM=your-email@gmail.com
+export SMTP_TO=recipient@example.com
+
+# Processing Configuration
+export OPENAI_STUB=true  # Use stubbed responses for testing
+export SCHEDULE_CRON="0 0 9 * * *"  # Daily at 9 AM
+export ENTITIES_TO_TRACK='["Danske Bank", "fintech", "bankruptcy"]'
+```
+
+**Step 4: Test Email Configuration**
+```bash
+# Test SMTP connection
+go run test_smtp.go
+
+# Test complete system
+go run ./cmd/processor -once
+```
+
+#### **🚀 Running the Email Processor**
+
+```bash
+# Run once immediately
+go run ./cmd/processor -once
+
+# Show schedule information
+go run ./cmd/processor -schedule
+
+# Start scheduled processing (runs continuously)
+go run ./cmd/processor
+```
+
+#### **📋 Complete System Components**
+- ✅ **IMAP Email Fetcher**: Connects to Gmail and finds PDF attachments
+- ✅ **SMTP Email Sender**: Sends beautiful HTML emails with analysis results
+- ✅ **HTML Templates**: Professional email formatting with entity results
+- ✅ **Error Handling**: Enhanced error messages for Gmail authentication
+- ✅ **Email Processor**: Orchestrates fetching, analysis, and sending
+- ✅ **Cron Scheduler**: Automated scheduling with retry logic
+- ✅ **Command Line Tool**: `cmd/processor` with multiple modes
 
 ## API Usage
 
@@ -73,6 +104,35 @@ A Go application that extracts information about specific entities (companies, V
 - `entities`: JSON array of entities to search for
 
 **Response**: JSON object mapping each entity to extracted information
+
+## Troubleshooting
+
+### **🔧 Common Email Issues**
+
+**SMTP Authentication Errors:**
+- **535 Error**: "Username and Password not accepted"
+  - ✅ **Solution**: Use App Passwords, not your regular Gmail password
+  - ✅ **Steps**: Enable 2FA → Generate App Password → Use 16-char password
+
+**IMAP Connection Issues:**
+- **Connection refused**: Check if IMAP is enabled in Gmail settings
+- **Authentication failed**: Use App Password for IMAP as well
+
+**No PDF Emails Found:**
+- ✅ **Check**: Emails must be from the last 24 hours
+- ✅ **Check**: PDFs must be actual attachments (not embedded)
+- ✅ **Check**: IMAP folder setting (default: "INBOX")
+
+**Testing Commands:**
+```bash
+# Test SMTP only
+go run test_smtp.go
+
+# Test IMAP only (check logs for connection details)
+export IMAP_USERNAME=your-email@gmail.com
+export IMAP_PASSWORD=your-app-password
+go run ./cmd/processor -once
+```
 
 ## OpenAI API Learnings
 
