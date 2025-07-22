@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/smtp"
+	"strings"
 	"time"
 
 	"egobot/internal/ai"
@@ -157,7 +158,7 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
 
 // sendEmail sends an email via SMTP
 func (s *EmailSender) sendEmail(subject, htmlContent string) error {
-	log.Printf("Sending email to %s", s.config.To)
+	log.Printf("Sending email to %s via %s:%d", s.config.To, s.config.Host, s.config.Port)
 
 	// Create email headers
 	headers := make(map[string]string)
@@ -175,11 +176,23 @@ func (s *EmailSender) sendEmail(subject, htmlContent string) error {
 	message.WriteString("\r\n")
 	message.WriteString(htmlContent)
 
-	// Send email
+	// Send email with better error handling
 	auth := smtp.PlainAuth("", s.config.Username, s.config.Password, s.config.Host)
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 
+	log.Printf("Attempting SMTP connection to %s with username: %s", addr, s.config.Username)
+
 	if err := smtp.SendMail(addr, auth, s.config.From, []string{s.config.To}, message.Bytes()); err != nil {
+		// Provide more helpful error messages for common Gmail issues
+		if strings.Contains(err.Error(), "535") {
+			return fmt.Errorf("SMTP authentication failed (535). For Gmail, ensure you're using an App Password, not your regular password. Enable 2FA and generate an App Password at https://myaccount.google.com/apppasswords")
+		}
+		if strings.Contains(err.Error(), "530") {
+			return fmt.Errorf("SMTP authentication failed (530). Check your username and password")
+		}
+		if strings.Contains(err.Error(), "550") {
+			return fmt.Errorf("SMTP authentication failed (550). Check your 'From' email address")
+		}
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 

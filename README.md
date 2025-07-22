@@ -31,7 +31,7 @@ A Go application that extracts information about specific entities (companies, V
      -F 'entities=["Danske Bank","12345678","fintech","John Doe"]'
    ```
 
-### For Automated Email Processing (Phase 2 - Email Infrastructure)
+### For Automated Email Processing (Phase 3 - Complete System)
 
 1. **Set up email credentials**:
    ```bash
@@ -40,14 +40,29 @@ A Go application that extracts information about specific entities (companies, V
    export SMTP_FROM=your-email@gmail.com
    export SMTP_TO=recipient@example.com
    export OPENAI_STUB=true  # Use stubbed responses for testing
+   export SCHEDULE_CRON="0 0 9 * * *"  # Daily at 9 AM
    ```
 
-2. **Email infrastructure components**:
+2. **Run the email processor**:
+   ```bash
+   # Run once immediately
+   go run ./cmd/processor -once
+   
+   # Show schedule information
+   go run ./cmd/processor -schedule
+   
+   # Start scheduled processing (runs continuously)
+   go run ./cmd/processor
+   ```
+
+3. **Complete system components**:
    - ✅ **IMAP Email Fetcher**: Connects to email servers and finds PDF attachments
    - ✅ **SMTP Email Sender**: Sends formatted HTML emails with analysis results
    - ✅ **HTML Templates**: Beautiful email formatting with entity results
    - ✅ **Error Handling**: Comprehensive error notifications
-   - 🔄 **Email Processor**: Coming in Phase 3 (scheduling and processing logic)
+   - ✅ **Email Processor**: Orchestrates fetching, analysis, and sending
+   - ✅ **Cron Scheduler**: Automated scheduling with retry logic
+   - ✅ **Command Line Tool**: `cmd/processor` with multiple modes
 
 ## API Usage
 
@@ -83,7 +98,7 @@ A Go application that extracts information about specific entities (companies, V
 egobot/
 ├── cmd/
 │   ├── egobot/main.go          # HTTP API server
-│   └── processor/main.go       # Email processor (coming soon)
+│   └── processor/main.go       # Email processor CLI
 ├── internal/
 │   ├── ai/
 │   │   ├── extractor.go        # OpenAI integration
@@ -97,6 +112,12 @@ egobot/
 │   │   ├── sender.go           # SMTP email sending
 │   │   ├── fetcher_test.go     # Email fetcher tests
 │   │   └── sender_test.go      # Email sender tests
+│   ├── processor/
+│   │   ├── processor.go        # Email processing orchestration
+│   │   └── processor_test.go   # Processor tests
+│   ├── scheduler/
+│   │   ├── scheduler.go        # Cron-based scheduling
+│   │   └── scheduler_test.go   # Scheduler tests
 │   └── pdf/reader.go           # PDF text extraction
 ├── go.mod                      # Dependencies
 └── statstidende_sample.pdf     # Sample PDF file
