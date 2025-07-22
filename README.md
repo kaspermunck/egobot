@@ -31,7 +31,7 @@ A Go application that extracts information about specific entities (companies, V
      -F 'entities=["Danske Bank","12345678","fintech","John Doe"]'
    ```
 
-### For Automated Email Processing (New Feature)
+### For Automated Email Processing (Phase 2 - Email Infrastructure)
 
 1. **Set up email credentials**:
    ```bash
@@ -42,10 +42,12 @@ A Go application that extracts information about specific entities (companies, V
    export OPENAI_STUB=true  # Use stubbed responses for testing
    ```
 
-2. **Start the email processor** (coming soon):
-   ```bash
-   go run ./cmd/processor
-   ```
+2. **Email infrastructure components**:
+   - ✅ **IMAP Email Fetcher**: Connects to email servers and finds PDF attachments
+   - ✅ **SMTP Email Sender**: Sends formatted HTML emails with analysis results
+   - ✅ **HTML Templates**: Beautiful email formatting with entity results
+   - ✅ **Error Handling**: Comprehensive error notifications
+   - 🔄 **Email Processor**: Coming in Phase 3 (scheduling and processing logic)
 
 ## API Usage
 
@@ -90,6 +92,11 @@ egobot/
 │   ├── config/
 │   │   ├── config.go           # Configuration management
 │   │   └── config_test.go
+│   ├── email/
+│   │   ├── fetcher.go          # IMAP email fetching
+│   │   ├── sender.go           # SMTP email sending
+│   │   ├── fetcher_test.go     # Email fetcher tests
+│   │   └── sender_test.go      # Email sender tests
 │   └── pdf/reader.go           # PDF text extraction
 ├── go.mod                      # Dependencies
 └── statstidende_sample.pdf     # Sample PDF file
