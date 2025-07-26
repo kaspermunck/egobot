@@ -10,8 +10,8 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o egobot ./cmd/egobot
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o processor ./cmd/processor
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o egobot cmd/egobot/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o processor cmd/processor/main.go
 
 # Final stage
 FROM alpine:latest
