@@ -72,13 +72,7 @@ func preFilterContent(text string, entities []string) string {
 		// Also include paragraphs that might contain relevant business information
 		// Look for keywords that indicate business events
 		businessKeywords := []string{
-			"konkurs", "bankruptcy", "liquidation", "insolvency",
-			"fusion", "merger", "acquisition", "overtagelse",
-			"stiftelse", "foundation", "oprettelse", "establishment",
-			"ophør", "termination", "lukning", "closure",
-			"ændring", "change", "modification",
-			"direktion", "management", "bestyrelse", "board",
-			"kapital", "capital", "aktier", "shares",
+			"frivillig likvidation", "dødsbo", "konkurs", "tvangsauktion", "fusion",
 		}
 
 		for _, keyword := range businessKeywords {
