@@ -7,7 +7,9 @@ import (
 	"log"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -52,7 +54,7 @@ func NewEmailFetcher(config *Config) *EmailFetcher {
 	}
 }
 
-// FetchPDFEmails fetches emails with PDF attachments from the last 24 hours
+// FetchPDFEmails fetches emails with PDF links from the last 24 hours
 func (f *EmailFetcher) FetchPDFEmails() ([]EmailMessage, error) {
 	log.Printf("Connecting to IMAP server: %s:%d", f.config.Server, f.config.Port)
 
@@ -122,7 +124,7 @@ func (f *EmailFetcher) FetchPDFEmails() ([]EmailMessage, error) {
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	log.Printf("Successfully processed %d emails with PDF attachments", len(emailMessages))
+	log.Printf("Successfully processed %d emails with PDF links", len(emailMessages))
 	return emailMessages, nil
 }
 
@@ -136,12 +138,36 @@ func (f *EmailFetcher) processMessage(msg *imap.Message) (EmailMessage, error) {
 		Attachments: []Attachment{},
 	}
 
-	// Process message body to find attachments
-	if err := f.processMessageBody(msg, &emailMsg); err != nil {
-		return emailMsg, fmt.Errorf("failed to process message body: %w", err)
+	// Check if this is a Statstidende email with PDF link
+	if f.isStatstidendeEmail(msg.Envelope.Subject) {
+		log.Printf("Found Statstidende email: %s", msg.Envelope.Subject)
+
+		// Process message body to find PDF links
+		if err := f.processMessageBody(msg, &emailMsg); err != nil {
+			return emailMsg, fmt.Errorf("failed to process message body: %w", err)
+		}
 	}
 
 	return emailMsg, nil
+}
+
+// isStatstidendeEmail checks if the email is from Statstidende with PDF content
+func (f *EmailFetcher) isStatstidendeEmail(subject string) bool {
+	// Check for Statstidende emails with PDF content
+	statstidendePatterns := []string{
+		"Dagens kundgørelse",
+		"Statstidende",
+		"PDF",
+	}
+
+	subjectLower := strings.ToLower(subject)
+	for _, pattern := range statstidendePatterns {
+		if strings.Contains(strings.ToLower(subjectLower), strings.ToLower(pattern)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // processMessageBody processes the body of an email message
@@ -205,7 +231,7 @@ func (f *EmailFetcher) processEntity(entity *mail.Message, emailMsg *EmailMessag
 
 // processSinglePart processes a single-part message
 func (f *EmailFetcher) processSinglePart(entity *mail.Message, emailMsg *EmailMessage) error {
-	// Check if this is a PDF attachment
+	// Check if this is a PDF attachment (legacy support)
 	contentType := entity.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/pdf") {
 		filename := entity.Header.Get("Content-Disposition")
@@ -233,6 +259,9 @@ func (f *EmailFetcher) processSinglePart(entity *mail.Message, emailMsg *EmailMe
 		}
 		emailMsg.Attachments = append(emailMsg.Attachments, attachment)
 		log.Printf("Found PDF attachment: %s", filename)
+	} else {
+		// Look for PDF links in text content
+		return f.extractPDFLinks(entity, emailMsg)
 	}
 
 	return nil
@@ -240,7 +269,7 @@ func (f *EmailFetcher) processSinglePart(entity *mail.Message, emailMsg *EmailMe
 
 // processPart processes a single message part
 func (f *EmailFetcher) processPart(part *multipart.Part, emailMsg *EmailMessage) error {
-	// Check if this is a PDF attachment
+	// Check if this is a PDF attachment (legacy support)
 	contentType := part.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/pdf") {
 		filename := part.FileName()
@@ -261,9 +290,137 @@ func (f *EmailFetcher) processPart(part *multipart.Part, emailMsg *EmailMessage)
 		}
 		emailMsg.Attachments = append(emailMsg.Attachments, attachment)
 		log.Printf("Found PDF attachment: %s", filename)
+	} else {
+		// Look for PDF links in text content
+		return f.extractPDFLinksFromPart(part, emailMsg)
 	}
 
 	return nil
+}
+
+// extractPDFLinks extracts PDF download links from email content
+func (f *EmailFetcher) extractPDFLinks(entity *mail.Message, emailMsg *EmailMessage) error {
+	// Read the body content
+	body, err := io.ReadAll(entity.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read email body: %w", err)
+	}
+
+	bodyStr := string(body)
+
+	// Look for Statstidende PDF links
+	pdfLinks := f.findStatstidendePDFLinks(bodyStr)
+
+	for _, link := range pdfLinks {
+		log.Printf("Found PDF link: %s", link)
+
+		// Download the PDF
+		pdfData, err := f.downloadPDF(link)
+		if err != nil {
+			log.Printf("Failed to download PDF from %s: %v", link, err)
+			continue
+		}
+
+		// Create attachment from downloaded PDF
+		attachment := Attachment{
+			Filename:    "statstidende.pdf",
+			ContentType: "application/pdf",
+			Data:        bytes.NewReader(pdfData),
+		}
+		emailMsg.Attachments = append(emailMsg.Attachments, attachment)
+		log.Printf("Successfully downloaded PDF from: %s", link)
+	}
+
+	return nil
+}
+
+// extractPDFLinksFromPart extracts PDF download links from a message part
+func (f *EmailFetcher) extractPDFLinksFromPart(part *multipart.Part, emailMsg *EmailMessage) error {
+	// Read the part content
+	body, err := io.ReadAll(part)
+	if err != nil {
+		return fmt.Errorf("failed to read part body: %w", err)
+	}
+
+	bodyStr := string(body)
+
+	// Look for Statstidende PDF links
+	pdfLinks := f.findStatstidendePDFLinks(bodyStr)
+
+	for _, link := range pdfLinks {
+		log.Printf("Found PDF link: %s", link)
+
+		// Download the PDF
+		pdfData, err := f.downloadPDF(link)
+		if err != nil {
+			log.Printf("Failed to download PDF from %s: %v", link, err)
+			continue
+		}
+
+		// Create attachment from downloaded PDF
+		attachment := Attachment{
+			Filename:    "statstidende.pdf",
+			ContentType: "application/pdf",
+			Data:        bytes.NewReader(pdfData),
+		}
+		emailMsg.Attachments = append(emailMsg.Attachments, attachment)
+		log.Printf("Successfully downloaded PDF from: %s", link)
+	}
+
+	return nil
+}
+
+// findStatstidendePDFLinks finds PDF download links in email content
+func (f *EmailFetcher) findStatstidendePDFLinks(content string) []string {
+	var links []string
+
+	// Pattern for Statstidende PDF links
+	// Looking for links like: https://statstidende.dk/api/publication/3093/pdf
+	statstidendePattern := regexp.MustCompile(`https://statstidende\.dk/api/publication/\d+/pdf`)
+
+	matches := statstidendePattern.FindAllString(content, -1)
+	for _, match := range matches {
+		links = append(links, match)
+	}
+
+	return links
+}
+
+// downloadPDF downloads a PDF from a URL
+func (f *EmailFetcher) downloadPDF(url string) ([]byte, error) {
+	log.Printf("Downloading PDF from: %s", url)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Make the request
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download PDF: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check if the request was successful
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to download PDF: HTTP %d", resp.StatusCode)
+	}
+
+	// Check if the response is actually a PDF
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "application/pdf") {
+		log.Printf("Warning: Response is not a PDF (Content-Type: %s)", contentType)
+	}
+
+	// Read the PDF data
+	pdfData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read PDF data: %w", err)
+	}
+
+	log.Printf("Successfully downloaded PDF (%d bytes)", len(pdfData))
+	return pdfData, nil
 }
 
 // formatAddress formats an email address
