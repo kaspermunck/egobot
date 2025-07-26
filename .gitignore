@@ -1,6 +1,4 @@
 # Binaries
-processor
-egobot
 *.exe
 *.exe~
 *.dll
