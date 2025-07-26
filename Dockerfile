@@ -9,9 +9,6 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Debug: List contents to verify files are copied
-RUN echo "Build timestamp: $(date)" && ls -la && ls -la cmd/ && ls -la cmd/egobot/
-
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o egobot ./cmd/egobot
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o processor ./cmd/processor
