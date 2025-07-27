@@ -193,59 +193,90 @@ func smartChunkText(text string, maxTokens int) []string {
 	return chunks
 }
 
-// extractRelevantSections extracts only the relevant sections from the PDF based on actual structure
+// extractRelevantSections extracts only sections that contain the target entities
 func extractRelevantSections(text string, entities []string) string {
-	var relevantSections []string
+	// Split text into sentences for more granular filtering
+	sentences := strings.Split(text, ". ")
+	var relevantSentences []string
 
-	// Split by major sections (these are the actual section headers in Statstidende)
-	sections := []string{
-		"Dødsboer",
-		"Gældssanering",
-		"Konkursboer",
-		"Tvangsauktioner",
-		"Øvrige retslige kundgørelser",
-	}
+	// Track which entities we've found
+	foundEntities := make(map[string]bool)
 
-	// Extract each relevant section
-	for _, section := range sections {
-		if idx := strings.Index(text, section); idx != -1 {
-			// Find the end of this section (next section or end of text)
-			end := len(text)
-			for _, nextSection := range sections {
-				if nextIdx := strings.Index(text[idx+len(section):], nextSection); nextIdx != -1 {
-					if idx+len(section)+nextIdx < end {
-						end = idx + len(section) + nextIdx
-					}
-				}
+	for _, sentence := range sentences {
+		sentenceLower := strings.ToLower(sentence)
+
+		// Check if sentence contains any of the target entities
+		for _, entity := range entities {
+			if findEntityInText(sentence, entity) {
+				relevantSentences = append(relevantSentences, sentence)
+				foundEntities[entity] = true
+				break
 			}
+		}
 
-			sectionContent := text[idx:end]
-			relevantSections = append(relevantSections, sectionContent)
+		// Also include sentences with business keywords
+		businessKeywords := []string{
+			"frivillig likvidation", "dødsbo", "konkurs", "tvangsauktion", "fusion",
+			"skifteret", "sagsnummer", "cpr", "cvr", "adresse", "dødsdato",
+		}
+
+		for _, keyword := range businessKeywords {
+			if strings.Contains(sentenceLower, keyword) {
+				relevantSentences = append(relevantSentences, sentence)
+				break
+			}
 		}
 	}
 
-	// If we found sections, return them
-	if len(relevantSections) > 0 {
-		result := strings.Join(relevantSections, "\n\n")
-		log.Printf("Extracted %d relevant sections", len(relevantSections))
-		return result
+	// If we found relevant content, return it
+	if len(relevantSentences) > 0 {
+		filteredText := strings.Join(relevantSentences, ". ")
+		log.Printf("Section extraction: found %d relevant sentences", len(relevantSentences))
+		return filteredText
 	}
 
-	// If no sections found, check if any entities are in the text
-	// If entities are found, return the full text to ensure we don't miss anything
-	for _, entity := range entities {
-		if strings.Contains(strings.ToLower(text), strings.ToLower(entity)) {
-			log.Printf("Entity '%s' found in text, using full document", entity)
-			return text
-		}
-	}
-
-	// If no sections and no entities found, return a larger portion of the text
-	log.Printf("No relevant sections or entities found, using first 10000 characters")
-	if len(text) > 10000 {
-		return text[:10000]
+	// If no relevant content found, return first 1000 characters
+	log.Printf("No relevant sections found, using first 1000 characters")
+	if len(text) > 1000 {
+		return text[:1000]
 	}
 	return text
+}
+
+// truncateTextToTokenLimit truncates text to fit within token limits
+func truncateTextToTokenLimit(text string, maxTokens int) string {
+	// Rough estimate: 4 characters per token
+	maxChars := maxTokens * 3 // Conservative estimate
+
+	if len(text) <= maxChars {
+		return text
+	}
+
+	// Try to truncate at sentence boundaries
+	sentences := strings.Split(text, ". ")
+	if len(sentences) == 1 {
+		// No sentence boundaries, truncate directly
+		return text[:maxChars] + "..."
+	}
+
+	var result strings.Builder
+	charCount := 0
+
+	for _, sentence := range sentences {
+		sentenceWithPeriod := sentence + ". "
+		if charCount+len(sentenceWithPeriod) > maxChars {
+			break
+		}
+		result.WriteString(sentenceWithPeriod)
+		charCount += len(sentenceWithPeriod)
+	}
+
+	if result.Len() == 0 {
+		// If we couldn't fit even one sentence, truncate directly
+		return text[:maxChars] + "..."
+	}
+
+	return strings.TrimSpace(result.String())
 }
 
 // findEntityInText performs robust entity matching with various strategies
@@ -345,20 +376,19 @@ func ExtractEntitiesFromPDFFile(ctx context.Context, file io.Reader, filename st
 		return allResults, nil
 	}
 
-	// 4. Use different strategies based on document size and entity presence
-	var textToProcess string
-	if entitiesFound {
-		// If entities are found, use the full document to ensure we capture everything
-		log.Printf("Entities found, using full document (%d characters)", len(pdfText))
-		textToProcess = pdfText
-	} else {
-		// If no entities found, try section extraction first
-		log.Printf("No entities found, trying section extraction")
-		textToProcess = extractRelevantSections(pdfText, entities)
-		log.Printf("Section extraction result: %d characters", len(textToProcess))
+	// 4. Use aggressive sentence-level filtering to reduce token usage
+	log.Printf("Entities found, extracting only relevant sentences to minimize token usage")
+	textToProcess := extractRelevantSections(pdfText, entities)
+	log.Printf("Sentence extraction result: %d characters", len(textToProcess))
+
+	// 5. If still too long, use even more aggressive filtering
+	if len(textToProcess) > 8000 { // Conservative limit for GPT-3.5-turbo
+		log.Printf("Text still too long (%d chars), applying ultra-aggressive filtering", len(textToProcess))
+		textToProcess = extractUltraRelevantContent(textToProcess, entities)
+		log.Printf("Ultra-aggressive filtering result: %d characters", len(textToProcess))
 	}
 
-	// 5. Process with GPT-3.5-turbo (higher rate limits)
+	// 6. Process with GPT-3.5-turbo
 	log.Printf("Processing document with GPT-3.5-turbo (%d characters)", len(textToProcess))
 
 	entityList := strings.Join(entities, "\n")
@@ -449,4 +479,35 @@ Dokument:
 	}
 
 	return nil, fmt.Errorf("failed to process document after %d attempts", maxRetries)
+}
+
+// extractUltraRelevantContent extracts only the most relevant content containing the target entities
+func extractUltraRelevantContent(text string, entities []string) string {
+	// Split into sentences
+	sentences := strings.Split(text, ". ")
+	var ultraRelevantSentences []string
+
+	// Only include sentences that directly contain the target entities
+	for _, sentence := range sentences {
+		for _, entity := range entities {
+			if findEntityInText(sentence, entity) {
+				ultraRelevantSentences = append(ultraRelevantSentences, sentence)
+				break
+			}
+		}
+	}
+
+	// If we found sentences with entities, return them
+	if len(ultraRelevantSentences) > 0 {
+		result := strings.Join(ultraRelevantSentences, ". ")
+		log.Printf("Ultra-aggressive filtering: found %d sentences with target entities", len(ultraRelevantSentences))
+		return result
+	}
+
+	// If no sentences with entities found, return first 500 characters
+	log.Printf("No sentences with target entities found, using first 500 characters")
+	if len(text) > 500 {
+		return text[:500]
+	}
+	return text
 }
