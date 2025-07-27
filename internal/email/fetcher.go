@@ -311,7 +311,16 @@ func (f *EmailFetcher) extractPDFLinks(entity *mail.Message, emailMsg *EmailMess
 	// Look for Statstidende PDF links
 	pdfLinks := f.findStatstidendePDFLinks(bodyStr)
 
+	// Track processed links to avoid duplicates
+	processedLinks := make(map[string]bool)
+
 	for _, link := range pdfLinks {
+		if processedLinks[link] {
+			log.Printf("Skipping duplicate PDF link: %s", link)
+			continue
+		}
+		processedLinks[link] = true
+
 		log.Printf("Found PDF link: %s", link)
 
 		// Download the PDF
@@ -347,7 +356,16 @@ func (f *EmailFetcher) extractPDFLinksFromPart(part *multipart.Part, emailMsg *E
 	// Look for Statstidende PDF links
 	pdfLinks := f.findStatstidendePDFLinks(bodyStr)
 
+	// Track processed links to avoid duplicates
+	processedLinks := make(map[string]bool)
+
 	for _, link := range pdfLinks {
+		if processedLinks[link] {
+			log.Printf("Skipping duplicate PDF link: %s", link)
+			continue
+		}
+		processedLinks[link] = true
+
 		log.Printf("Found PDF link: %s", link)
 
 		// Download the PDF

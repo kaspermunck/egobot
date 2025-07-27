@@ -1,9 +1,11 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -53,7 +55,7 @@ func Load() (*Config, error) {
 		SMTPFrom:     getEnvOrDefault("SMTP_FROM", ""),
 		SMTPTo:       getEnvOrDefault("SMTP_TO", ""),
 
-		EntitiesToTrack: getEnvSliceOrDefault("ENTITIES_TO_TRACK", []string{"Danske Bank", "fintech", "bankruptcy"}),
+		EntitiesToTrack: getEnvSliceOrDefault("ENTITIES_TO_TRACK", []string{"pikkemand"}),
 		ScheduleCron:    getEnvOrDefault("SCHEDULE_CRON", "0 9 * * *"), // Daily at 9 AM
 		MaxRetries:      getEnvIntOrDefault("MAX_RETRIES", 3),
 		RetryDelay:      getEnvDurationOrDefault("RETRY_DELAY", 5*time.Minute),
@@ -116,8 +118,19 @@ func getEnvDurationOrDefault(key string, defaultValue time.Duration) time.Durati
 
 func getEnvSliceOrDefault(key string, defaultValue []string) []string {
 	if value := os.Getenv(key); value != "" {
-		// Simple comma-separated values
-		return []string{value} // For now, just return as single item
+		// Try to parse as JSON array first
+		var jsonArray []string
+		if err := json.Unmarshal([]byte(value), &jsonArray); err == nil {
+			return jsonArray
+		}
+
+		// Fallback to comma-separated values
+		if strings.Contains(value, ",") {
+			return strings.Split(value, ",")
+		}
+
+		// If it's a single value, return as array with one item
+		return []string{value}
 	}
 	return defaultValue
 }
