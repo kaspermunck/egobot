@@ -12,6 +12,6 @@
   },
   "cron": {
     "schedule": "0 6 * * *",
-    "command": "/root/processor -once"
+    "command": "./processor -once"
   }
 } 
