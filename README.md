@@ -63,7 +63,7 @@ export SMTP_TO=your-email@gmail.com
 
 # Processing Configuration
 export OPENAI_STUB=false  # Use real OpenAI API
-export SCHEDULE_CRON="0 5 * * *"  # Daily at 6:00 AM CET (5:00 AM UTC)
+export SCHEDULE_CRON="0 0 5 * * *"  # Daily at 6:00 AM CET (5:00 AM UTC)
 export ENTITIES_TO_TRACK='["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]'
 ```
 
@@ -240,7 +240,7 @@ ENTITIES_TO_TRACK=["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]
 
 # Optional
 OPENAI_STUB=false
-SCHEDULE_CRON=0 5 * * *
+SCHEDULE_CRON=0 0 5 * * *
 ```
 
 **Service Configuration:**
