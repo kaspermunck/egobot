@@ -105,14 +105,14 @@ func RunServer(lc fx.Lifecycle, router *gin.Engine) {
 	// Set up cron scheduler
 	scheduler := cron.New(cron.WithSeconds())
 
-	// Use the schedule from config, or default to 6:00 AM CET
+	// Use the schedule from config, or default to hourly for testing
 	cronSchedule := cfg.ScheduleCron
 	if cronSchedule == "" {
-		cronSchedule = "0 0 5 * * *" // 0 seconds, 0 minutes, 5 hours = 5:00 AM UTC = 6:00 AM CET (winter)
+		cronSchedule = "0 0 * * * *" // Every hour at minute 0, second 0
 	}
 
 	log.Printf("🚀 Starting egobot service with internal cron")
-	log.Printf("📅 Cron schedule: %s (Daily at 6:00 AM CET)", cronSchedule)
+	log.Printf("📅 Cron schedule: %s (Hourly for testing)", cronSchedule)
 
 	entryID, err := scheduler.AddFunc(cronSchedule, func() {
 		log.Printf("🕕 Cron job triggered - running daily email processing")

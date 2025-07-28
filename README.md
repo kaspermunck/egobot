@@ -63,7 +63,7 @@ export SMTP_TO=your-email@gmail.com
 
 # Processing Configuration
 export OPENAI_STUB=false  # Use real OpenAI API
-export SCHEDULE_CRON="0 0 5 * * *"  # Daily at 6:00 AM CET (5:00 AM UTC)
+export SCHEDULE_CRON="0 0 * * * *"  # Hourly for testing (every hour at minute 0)
 export ENTITIES_TO_TRACK='["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]'
 ```
 
@@ -139,7 +139,7 @@ To avoid token limits while preserving all relevant information:
 The service runs continuously with internal cron scheduling:
 
 - **Continuous HTTP server** available 24/7
-- **Internal cron job** runs daily at 6:00 AM CET
+- **Internal cron job** runs hourly for testing (every hour at minute 0)
 - **Configurable schedule** via `SCHEDULE_CRON` environment variable
 - **Automatic email processing** without external dependencies
 
@@ -240,7 +240,7 @@ ENTITIES_TO_TRACK=["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]
 
 # Optional
 OPENAI_STUB=false
-SCHEDULE_CRON=0 0 5 * * *
+SCHEDULE_CRON=0 0 * * * *
 ```
 
 **Service Configuration:**
@@ -257,7 +257,7 @@ SCHEDULE_CRON=0 0 5 * * *
 3. ✅ **Cron status** available at `/cron/status`
 4. ✅ **Daily processing** at 6:00 AM CET automatically
 
-**Every morning at 6:00 AM CET:**
+**Every hour (for testing):**
 1. ✅ **Internal cron triggers** email processing
 2. ✅ **Connects to Gmail** via IMAP
 3. ✅ **Downloads latest PDF** from emails (last 24 hours)
@@ -288,11 +288,11 @@ You'll know it's working when:
 
 ### **📱 Morning Coffee Setup**
 
-Your perfect morning routine:
-1. ☕ **6:00 AM**: Internal cron job runs automatically
-2. 📧 **6:01 AM**: Analysis email arrives in your inbox
-3. 📖 **6:05 AM**: Read fresh Statstidende analysis with coffee
-4. 🎯 **6:10 AM**: Take action on any relevant findings
+Your testing routine:
+1. ☕ **Every hour**: Internal cron job runs automatically
+2. 📧 **Within 1 minute**: Analysis email arrives in your inbox
+3. 📖 **Check email**: Read fresh Statstidende analysis
+4. 🎯 **Verify**: Confirm the system is working correctly
 
 ## Dependencies
 
