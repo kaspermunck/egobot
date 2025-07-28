@@ -1,14 +1,16 @@
 # Egobot - PDF Entity Extraction
 
-A Go application that extracts information about specific entities (companies, VAT numbers, persons, industries) from Danish company registry PDFs using OpenAI's GPT-4o.
+A Go application that extracts information about specific entities from Danish Statstidende PDFs using OpenAI's GPT-3.5-turbo with intelligent content filtering.
 
 ## Features
 
 - **PDF Processing**: Extracts text from PDF files using `ledongthuc/pdf`
-- **AI Analysis**: Uses OpenAI GPT-4o to analyze Danish company registry documents
-- **Entity Extraction**: Finds information about specific entities (bankruptcy, acquisitions, management changes, etc.)
-- **Large File Support**: Chunks large PDFs to avoid token limits
+- **AI Analysis**: Uses OpenAI GPT-3.5-turbo to analyze Danish Statstidende documents
+- **Entity Extraction**: Finds information about specific entities (names, CPR/CVR numbers, addresses, etc.)
+- **Intelligent Filtering**: Aggressive sentence-level filtering to avoid token limits without truncation
+- **Robust Matching**: Multiple strategies for finding entities with formatting variations
 - **REST API**: Simple HTTP endpoint for file upload and entity extraction
+- **Email Automation**: Automated email processing with IMAP/SMTP integration
 
 ## Quick Start
 
@@ -28,10 +30,10 @@ A Go application that extracts information about specific entities (companies, V
    ```bash
    curl -X POST http://localhost:8080/extract \
      -F "file=@statstidende_sample.pdf" \
-     -F 'entities=["Danske Bank","12345678","fintech","John Doe"]'
+     -F 'entities=["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]'
    ```
 
-### For Automated Email Processing (Phase 3 - Complete System)
+### For Automated Email Processing (Complete System)
 
 #### **📧 Email Configuration Setup**
 
@@ -59,9 +61,9 @@ export SMTP_FROM=your-email@gmail.com
 export SMTP_TO=recipient@example.com
 
 # Processing Configuration
-export OPENAI_STUB=true  # Use stubbed responses for testing
+export OPENAI_STUB=false  # Use real OpenAI API
 export SCHEDULE_CRON="0 0 9 * * *"  # Daily at 9 AM
-export ENTITIES_TO_TRACK='["Danske Bank", "fintech", "bankruptcy"]'
+export ENTITIES_TO_TRACK='["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]'
 ```
 
 **Step 4: Test Email Configuration**
@@ -86,15 +88,6 @@ go run ./cmd/processor -schedule
 go run ./cmd/processor
 ```
 
-#### **📋 Complete System Components**
-- ✅ **IMAP Email Fetcher**: Connects to Gmail and finds PDF attachments
-- ✅ **SMTP Email Sender**: Sends beautiful HTML emails with analysis results
-- ✅ **HTML Templates**: Professional email formatting with entity results
-- ✅ **Error Handling**: Enhanced error messages for Gmail authentication
-- ✅ **Email Processor**: Orchestrates fetching, analysis, and sending
-- ✅ **Cron Scheduler**: Automated scheduling with retry logic
-- ✅ **Command Line Tool**: `cmd/processor` with multiple modes
-
 ## API Usage
 
 **Endpoint**: `POST /extract`
@@ -105,52 +98,68 @@ go run ./cmd/processor
 
 **Response**: JSON object mapping each entity to extracted information
 
+**Example Response**:
+```json
+{
+  "Benny Gotfred Schmidt": "Found in dødsbo section: Benny Gotfred Schmidt, CPR: 0605410146, Address: Lægårdsvej 12A, 8000 Aarhus C",
+  "0605410146": "CPR number found in dødsbo announcement",
+  "Lægårdsvej 12A": "Address found in dødsbo section for Benny Gotfred Schmidt"
+}
+```
+
+## Technical Implementation
+
+### **🔍 Entity Matching Strategies**
+
+The system uses multiple robust matching strategies to find entities even with formatting variations:
+
+1. **Direct substring match** (normalized)
+2. **Multi-word entity matching** (for names like "Benny Gotfred Schmidt")
+3. **Format variation handling** (CPR numbers with/without spaces)
+4. **Partial address matching** (finding address components separately)
+
+### **📄 Content Filtering Approach**
+
+To avoid token limits while preserving all relevant information:
+
+1. **Early termination**: If no entities found, return immediately without API calls
+2. **Sentence-level filtering**: Extract only sentences containing target entities or business keywords
+3. **Ultra-aggressive filtering**: If still too long, extract only sentences with direct entity matches
+4. **No truncation**: All filtering is content-based, not arbitrary truncation
+
+### **⚡ Performance Optimizations**
+
+- **GPT-3.5-turbo**: Higher rate limits (90k TPM vs 30k TPM for GPT-4o)
+- **Exponential backoff**: Smart retry logic for rate limit handling
+- **JSON array parsing**: Proper parsing of environment variable arrays
+- **Early termination**: Saves API costs when entities aren't found
+
 ## Troubleshooting
 
-### **🔧 Common Email Issues**
+### **🔧 Common Issues**
+
+**Token Limit Errors:**
+- **Error**: "This model's maximum context length is 16385 tokens"
+- **Solution**: The aggressive filtering should prevent this. If still occurring, check if the PDF is extremely large.
+
+**Entity Not Found:**
+- **Check**: Verify entities are in the PDF using the robust matching
+- **Check**: Ensure JSON array format is correct: `["entity1","entity2"]`
+- **Check**: Look for formatting variations (spaces, punctuation)
+
+**Rate Limit Errors:**
+- **Error**: "429 Too Many Requests"
+- **Solution**: The system includes exponential backoff and retry logic
+
+### **🔧 Email Issues**
 
 **SMTP Authentication Errors:**
 - **535 Error**: "Username and Password not accepted"
   - ✅ **Solution**: Use App Passwords, not your regular Gmail password
-  - ✅ **Steps**: Enable 2FA → Generate App Password → Use 16-char password
-
-**IMAP Connection Issues:**
-- **Connection refused**: Check if IMAP is enabled in Gmail settings
-- **Authentication failed**: Use App Password for IMAP as well
 
 **No PDF Emails Found:**
 - ✅ **Check**: Emails must be from the last 24 hours
 - ✅ **Check**: PDFs must be actual attachments (not embedded)
-- ✅ **Check**: IMAP folder setting (default: "INBOX")
-
-**Testing Commands:**
-```bash
-# Test SMTP only
-go run test_smtp.go
-
-# Test IMAP only (check logs for connection details)
-export IMAP_USERNAME=your-email@gmail.com
-export IMAP_PASSWORD=your-app-password
-go run ./cmd/processor -once
-```
-
-## OpenAI API Learnings
-
-### Token Limits & Rate Limits
-- **Token Limit**: GPT-4o has ~30k tokens per request limit
-- **Rate Limit**: 30k tokens per minute (TPM) for organization
-- **Solution**: Chunk large PDFs into ~2000 token pieces
-
-### API Reliability Issues
-- **Assistants API**: File attachment fields (`file_ids`) are broken in `go-openai` library
-- **Chat Completions**: More reliable for text analysis
-- **File Upload**: Works for file upload but not for direct attachment to messages
-
-### Best Practices
-- Extract text from PDFs first, then send to AI
-- Use chunking for large documents
-- Implement comprehensive error logging
-- Handle rate limits gracefully
 
 ## Project Structure
 
@@ -161,11 +170,11 @@ egobot/
 │   └── processor/main.go       # Email processor CLI
 ├── internal/
 │   ├── ai/
-│   │   ├── extractor.go        # OpenAI integration
+│   │   ├── extractor.go        # OpenAI integration with filtering
 │   │   ├── stub_extractor.go   # Stubbed responses for testing
 │   │   └── stub_extractor_test.go
 │   ├── config/
-│   │   ├── config.go           # Configuration management
+│   │   ├── config.go           # Configuration with JSON array parsing
 │   │   └── config_test.go
 │   ├── email/
 │   │   ├── fetcher.go          # IMAP email fetching
@@ -187,13 +196,6 @@ egobot/
 
 ### **🚀 Railway Deployment (Recommended)**
 
-**Why Railway?**
-- ✅ **Free tier**: 500 hours/month (perfect for daily cron)
-- ✅ **Single command**: `./deploy.sh`
-- ✅ **Cron support**: Built-in scheduled jobs
-- ✅ **Environment variables**: Easy management
-- ✅ **Git integration**: Automatic deployments
-
 **Quick Deploy:**
 ```bash
 # Install Railway CLI
@@ -213,7 +215,7 @@ SMTP_PASSWORD=your-app-password
 SMTP_FROM=your-email@gmail.com
 SMTP_TO=recipient@example.com
 OPENAI_API_KEY=your-openai-key
-ENTITIES_TO_TRACK=["Danske Bank", "fintech", "bankruptcy"]
+ENTITIES_TO_TRACK=["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]
 
 # Optional
 OPENAI_STUB=false
@@ -224,38 +226,6 @@ SCHEDULE_CRON=0 6 * * *
 - **Schedule**: Daily at 6:00 AM CET
 - **Command**: `go run ./cmd/processor -once`
 - **Cost**: ~1 minute per day = 30 hours/month (well within free tier)
-
-### **🔧 Railway Troubleshooting**
-
-**"No service could be found" error:**
-```bash
-# Link to your existing project
-railway link
-
-# Then deploy
-./deploy.sh
-```
-
-**"Not logged in" error:**
-```bash
-railway login
-```
-
-**"Project not found" error:**
-```bash
-railway link
-```
-
-### **🔧 Alternative: Render**
-
-If you prefer Render:
-```bash
-# Install Render CLI
-npm install -g @render/cli
-
-# Deploy
-render deploy
-```
 
 ## Dependencies
 
