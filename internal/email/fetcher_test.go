@@ -3,6 +3,7 @@ package email
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIsStatstidendeEmail(t *testing.T) {
@@ -132,5 +133,78 @@ func TestDownloadPDFInvalidScheme(t *testing.T) {
 	_, err := fetcher.downloadPDF("ftp://example.com/file.pdf")
 	if err == nil {
 		t.Error("Expected error for invalid scheme, got nil")
+	}
+}
+
+// TestEmailMessageProcessedLinks tests the duplicate link handling functionality
+func TestEmailMessageProcessedLinks(t *testing.T) {
+	emailMsg := EmailMessage{
+		ID:             "test-123",
+		Subject:        "Test Email",
+		From:           "test@example.com",
+		Date:           time.Now(),
+		Attachments:    []Attachment{},
+		processedLinks: make(map[string]bool),
+	}
+
+	// Test initial state
+	if len(emailMsg.processedLinks) != 0 {
+		t.Error("Expected empty processedLinks map initially")
+	}
+
+	// Test adding a link
+	emailMsg.processedLinks["https://statstidende.dk/api/publication/123/pdf"] = true
+
+	// Test checking if link is processed
+	if !emailMsg.processedLinks["https://statstidende.dk/api/publication/123/pdf"] {
+		t.Error("Expected link to be marked as processed")
+	}
+
+	// Test checking non-existent link
+	if emailMsg.processedLinks["https://statstidende.dk/api/publication/456/pdf"] {
+		t.Error("Expected non-existent link to not be marked as processed")
+	}
+
+	// Test adding another link
+	emailMsg.processedLinks["https://statstidende.dk/api/publication/789/pdf"] = true
+
+	if len(emailMsg.processedLinks) != 2 {
+		t.Errorf("Expected 2 processed links, got %d", len(emailMsg.processedLinks))
+	}
+}
+
+// TestEmailMessageProcessedLinksInitialization tests that EmailMessage properly initializes processedLinks
+func TestEmailMessageProcessedLinksInitialization(t *testing.T) {
+	// Test that EmailMessage can be created with processedLinks
+	emailMsg := EmailMessage{
+		ID:             "test-123",
+		Subject:        "Test Email",
+		From:           "test@example.com",
+		Date:           time.Now(),
+		Attachments:    []Attachment{},
+		processedLinks: make(map[string]bool),
+	}
+
+	// Check that processedLinks is initialized
+	if emailMsg.processedLinks == nil {
+		t.Error("Expected processedLinks to be initialized")
+	}
+
+	// Check that it's an empty map
+	if len(emailMsg.processedLinks) != 0 {
+		t.Errorf("Expected empty processedLinks map, got %d entries", len(emailMsg.processedLinks))
+	}
+
+	// Test adding a link
+	emailMsg.processedLinks["https://statstidende.dk/api/publication/123/pdf"] = true
+
+	// Check that the link is marked as processed
+	if !emailMsg.processedLinks["https://statstidende.dk/api/publication/123/pdf"] {
+		t.Error("Expected link to be marked as processed")
+	}
+
+	// Check that we have exactly 1 processed link
+	if len(emailMsg.processedLinks) != 1 {
+		t.Errorf("Expected 1 processed link, got %d", len(emailMsg.processedLinks))
 	}
 }

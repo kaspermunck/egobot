@@ -19,11 +19,12 @@ import (
 
 // EmailMessage represents a processed email with attachments
 type EmailMessage struct {
-	ID          string
-	Subject     string
-	From        string
-	Date        time.Time
-	Attachments []Attachment
+	ID             string
+	Subject        string
+	From           string
+	Date           time.Time
+	Attachments    []Attachment
+	processedLinks map[string]bool // Track processed PDF links to avoid duplicates
 }
 
 // Attachment represents a file attachment from an email
@@ -131,11 +132,12 @@ func (f *EmailFetcher) FetchPDFEmails() ([]EmailMessage, error) {
 // processMessage processes a single email message
 func (f *EmailFetcher) processMessage(msg *imap.Message) (EmailMessage, error) {
 	emailMsg := EmailMessage{
-		ID:          fmt.Sprintf("%d", msg.Uid),
-		Subject:     msg.Envelope.Subject,
-		From:        f.formatAddress(msg.Envelope.From),
-		Date:        msg.Envelope.Date,
-		Attachments: []Attachment{},
+		ID:             fmt.Sprintf("%d", msg.Uid),
+		Subject:        msg.Envelope.Subject,
+		From:           f.formatAddress(msg.Envelope.From),
+		Date:           msg.Envelope.Date,
+		Attachments:    []Attachment{},
+		processedLinks: make(map[string]bool), // Initialize the processed links map
 	}
 
 	// Check if this is a Statstidende email with PDF link
@@ -311,15 +313,13 @@ func (f *EmailFetcher) extractPDFLinks(entity *mail.Message, emailMsg *EmailMess
 	// Look for Statstidende PDF links
 	pdfLinks := f.findStatstidendePDFLinks(bodyStr)
 
-	// Track processed links to avoid duplicates
-	processedLinks := make(map[string]bool)
-
 	for _, link := range pdfLinks {
-		if processedLinks[link] {
+		// Check if this link has already been processed
+		if emailMsg.processedLinks[link] {
 			log.Printf("Skipping duplicate PDF link: %s", link)
 			continue
 		}
-		processedLinks[link] = true
+		emailMsg.processedLinks[link] = true
 
 		log.Printf("Found PDF link: %s", link)
 
@@ -356,15 +356,13 @@ func (f *EmailFetcher) extractPDFLinksFromPart(part *multipart.Part, emailMsg *E
 	// Look for Statstidende PDF links
 	pdfLinks := f.findStatstidendePDFLinks(bodyStr)
 
-	// Track processed links to avoid duplicates
-	processedLinks := make(map[string]bool)
-
 	for _, link := range pdfLinks {
-		if processedLinks[link] {
+		// Check if this link has already been processed
+		if emailMsg.processedLinks[link] {
 			log.Printf("Skipping duplicate PDF link: %s", link)
 			continue
 		}
-		processedLinks[link] = true
+		emailMsg.processedLinks[link] = true
 
 		log.Printf("Found PDF link: %s", link)
 
