@@ -1,6 +1,6 @@
 # Egobot - PDF Entity Extraction
 
-A Go application that extracts information about specific entities from Danish Statstidende PDFs using OpenAI's GPT-3.5-turbo with intelligent content filtering.
+A Go application that extracts information about specific entities from Danish Statstidende PDFs using OpenAI's GPT-3.5-turbo with intelligent content filtering and internal cron scheduling.
 
 ## Features
 
@@ -10,7 +10,8 @@ A Go application that extracts information about specific entities from Danish S
 - **Intelligent Filtering**: Aggressive sentence-level filtering to avoid token limits without truncation
 - **Robust Matching**: Multiple strategies for finding entities with formatting variations
 - **REST API**: Simple HTTP endpoint for file upload and entity extraction
-- **Email Automation**: Automated email processing with IMAP/SMTP integration
+- **Internal Cron**: Automated daily email processing at 6:00 AM CET
+- **Continuous Service**: HTTP server runs 24/7 with scheduled background processing
 
 ## Quick Start
 
@@ -43,7 +44,7 @@ A Go application that extracts information about specific entities from Danish S
 
 **Step 2: Generate App Passwords**
 1. Go to [App Passwords](https://myaccount.google.com/apppasswords)
-2. Generate two app passwords:
+2. Generate two 16-character passwords:
    - **IMAP**: Select "Mail" → "Other (Custom name)" → Name it "egobot-imap"
    - **SMTP**: Select "Mail" → "Other (Custom name)" → Name it "egobot-smtp"
 3. Copy both 16-character passwords
@@ -58,11 +59,11 @@ export IMAP_PASSWORD=your-16-char-imap-app-password
 export SMTP_USERNAME=your-email@gmail.com
 export SMTP_PASSWORD=your-16-char-smtp-app-password
 export SMTP_FROM=your-email@gmail.com
-export SMTP_TO=recipient@example.com
+export SMTP_TO=your-email@gmail.com
 
 # Processing Configuration
 export OPENAI_STUB=false  # Use real OpenAI API
-export SCHEDULE_CRON="0 0 9 * * *"  # Daily at 9 AM
+export SCHEDULE_CRON="0 5 * * *"  # Daily at 6:00 AM CET (5:00 AM UTC)
 export ENTITIES_TO_TRACK='["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]'
 ```
 
@@ -107,6 +108,12 @@ go run ./cmd/processor
 }
 ```
 
+## Service Endpoints
+
+- `GET /ping` - Health check for Railway
+- `GET /cron/status` - Cron job status and next run time
+- `POST /extract` - PDF entity extraction
+
 ## Technical Implementation
 
 ### **🔍 Entity Matching Strategies**
@@ -126,6 +133,15 @@ To avoid token limits while preserving all relevant information:
 2. **Sentence-level filtering**: Extract only sentences containing target entities or business keywords
 3. **Ultra-aggressive filtering**: If still too long, extract only sentences with direct entity matches
 4. **No truncation**: All filtering is content-based, not arbitrary truncation
+
+### **⏰ Internal Cron Scheduling**
+
+The service runs continuously with internal cron scheduling:
+
+- **Continuous HTTP server** available 24/7
+- **Internal cron job** runs daily at 6:00 AM CET
+- **Configurable schedule** via `SCHEDULE_CRON` environment variable
+- **Automatic email processing** without external dependencies
 
 ### **⚡ Performance Optimizations**
 
@@ -151,6 +167,11 @@ To avoid token limits while preserving all relevant information:
 - **Error**: "429 Too Many Requests"
 - **Solution**: The system includes exponential backoff and retry logic
 
+**Cron Job Not Running:**
+- **Check**: Verify `SCHEDULE_CRON` environment variable is set correctly
+- **Check**: Look for cron job logs in Railway dashboard
+- **Check**: Test the `/cron/status` endpoint
+
 ### **🔧 Email Issues**
 
 **SMTP Authentication Errors:**
@@ -166,7 +187,7 @@ To avoid token limits while preserving all relevant information:
 ```
 egobot/
 ├── cmd/
-│   ├── egobot/main.go          # HTTP API server
+│   ├── egobot/main.go          # HTTP API server with internal cron
 │   └── processor/main.go       # Email processor CLI
 ├── internal/
 │   ├── ai/
@@ -213,19 +234,65 @@ IMAP_PASSWORD=your-app-password
 SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 SMTP_FROM=your-email@gmail.com
-SMTP_TO=recipient@example.com
+SMTP_TO=your-email@gmail.com
 OPENAI_API_KEY=your-openai-key
 ENTITIES_TO_TRACK=["Benny Gotfred Schmidt","0605410146","Lægårdsvej 12A"]
 
 # Optional
 OPENAI_STUB=false
-SCHEDULE_CRON=0 6 * * *
+SCHEDULE_CRON=0 5 * * *
 ```
 
-**Cron Job:**
-- **Schedule**: Daily at 6:00 AM CET
-- **Command**: `go run ./cmd/processor -once`
-- **Cost**: ~1 minute per day = 30 hours/month (well within free tier)
+**Service Configuration:**
+- **No cron schedule** in Railway dashboard (uses internal cron)
+- **Service runs continuously** like a normal web service
+- **Health checks** keep it running
+- **Internal cron** handles daily processing at 6:00 AM CET
+
+### **📊 Expected Behavior**
+
+**Service runs 24/7:**
+1. ✅ **HTTP server** available on port 8080
+2. ✅ **Health checks** respond to `/ping`
+3. ✅ **Cron status** available at `/cron/status`
+4. ✅ **Daily processing** at 6:00 AM CET automatically
+
+**Every morning at 6:00 AM CET:**
+1. ✅ **Internal cron triggers** email processing
+2. ✅ **Connects to Gmail** via IMAP
+3. ✅ **Downloads latest PDF** from emails (last 24 hours)
+4. ✅ **Analyzes PDF** with your target entities
+5. ✅ **Sends email report** to your inbox
+6. ✅ **Service continues running** for HTTP requests
+
+### **💰 Cost Estimation**
+
+**Railway Free Tier:**
+- ✅ **500 hours/month** (free)
+- ✅ **Continuous service**: 24/7 = 720 hours/month
+- ✅ **Upgrade needed**: ~$5/month for continuous service
+
+**OpenAI API Costs:**
+- ✅ **GPT-3.5-turbo**: ~$0.002 per 1K tokens
+- ✅ **Typical PDF**: ~$0.01-0.05 per analysis
+- ✅ **Daily cost**: ~$0.30-1.50/month
+
+### **🎯 Success Indicators**
+
+You'll know it's working when:
+- ✅ **Service runs continuously** (no restarts)
+- ✅ **Daily emails** arrive in your inbox at ~6:00 AM CET
+- ✅ **Email contains** analysis results for your entities
+- ✅ **Railway logs** show successful cron job execution
+- ✅ **No errors** in Railway or OpenAI dashboards
+
+### **📱 Morning Coffee Setup**
+
+Your perfect morning routine:
+1. ☕ **6:00 AM**: Internal cron job runs automatically
+2. 📧 **6:01 AM**: Analysis email arrives in your inbox
+3. 📖 **6:05 AM**: Read fresh Statstidende analysis with coffee
+4. 🎯 **6:10 AM**: Take action on any relevant findings
 
 ## Dependencies
 
@@ -235,4 +302,4 @@ SCHEDULE_CRON=0 6 * * *
 - `go.uber.org/fx` - Dependency injection
 - `github.com/emersion/go-imap` - IMAP email client
 - `github.com/jordan-wright/email` - SMTP email sending
-- `github.com/robfig/cron/v3` - Scheduled job processing 
+- `github.com/robfig/cron/v3` - Internal cron scheduling 

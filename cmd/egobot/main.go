@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
 	"egobot/internal/ai"
+	"egobot/internal/config"
+	"egobot/internal/processor"
 
 	"github.com/gin-gonic/gin"
+	"github.com/robfig/cron/v3"
 	"go.uber.org/fx"
 )
 
@@ -24,6 +28,17 @@ func NewRouter() *gin.Engine {
 		})
 	})
 
+	// Cron status endpoint
+	r.GET("/cron/status", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"service":      "egobot",
+			"status":       "running",
+			"cron_enabled": true,
+			"next_run":     "6:00 AM CET daily",
+			"timestamp":    time.Now().Format("2006-01-02 15:04:05"),
+		})
+	})
+
 	// Root endpoint
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
@@ -31,6 +46,7 @@ func NewRouter() *gin.Engine {
 			"version": "1.0.0",
 			"endpoints": []string{
 				"GET /ping - Health check",
+				"GET /cron/status - Cron job status",
 				"POST /extract - Extract entities from PDF",
 			},
 		})
@@ -77,12 +93,62 @@ func RunServer(lc fx.Lifecycle, router *gin.Engine) {
 		Handler: router,
 	}
 
+	// Load configuration for cron job
+	cfg, err := config.Load()
+	if err != nil {
+		panic("Failed to load configuration: " + err.Error())
+	}
+
+	// Create processor for cron job
+	proc := processor.NewProcessor(cfg)
+
+	// Set up cron scheduler
+	scheduler := cron.New(cron.WithSeconds())
+
+	// Use the schedule from config, or default to 6:00 AM CET
+	cronSchedule := cfg.ScheduleCron
+	if cronSchedule == "" {
+		cronSchedule = "0 5 * * *" // 5:00 AM UTC = 6:00 AM CET (winter)
+	}
+
+	log.Printf("🚀 Starting egobot service with internal cron")
+	log.Printf("📅 Cron schedule: %s (Daily at 6:00 AM CET)", cronSchedule)
+
+	entryID, err := scheduler.AddFunc(cronSchedule, func() {
+		log.Printf("🕕 Cron job triggered - running daily email processing")
+		startTime := time.Now()
+
+		if err := proc.ProcessWithRetry(); err != nil {
+			log.Printf("❌ Cron job failed after %v: %v", time.Since(startTime), err)
+		} else {
+			log.Printf("✅ Cron job completed successfully in %v", time.Since(startTime))
+		}
+	})
+
+	if err != nil {
+		log.Printf("❌ Failed to add cron job: %v", err)
+	} else {
+		log.Printf("✅ Cron job scheduled with ID %d: %s", entryID, cronSchedule)
+	}
+
+	// Start the cron scheduler
+	scheduler.Start()
+	log.Printf("🌐 HTTP server starting on port 8080")
+
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			go server.ListenAndServe()
+		OnStart: func(context.Context) error {
+			go func() {
+				if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					log.Printf("❌ Server error: %v", err)
+				}
+			}()
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
+			// Stop the cron scheduler
+			scheduler.Stop()
+
+			// Shutdown the server gracefully
 			return server.Shutdown(ctx)
 		},
 	})
