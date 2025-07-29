@@ -63,6 +63,20 @@ type AnalysisResult struct {
 	Error        string
 }
 
+// cleanEntityResult removes the entity name from the beginning of the result if it appears there
+func (s *EmailSender) cleanEntityResult(entityName, result string) string {
+	// If the result starts with the entity name, remove it
+	if strings.HasPrefix(strings.TrimSpace(result), entityName) {
+		cleaned := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(result), entityName))
+		// Remove any leading punctuation or whitespace
+		cleaned = strings.TrimSpace(strings.TrimPrefix(cleaned, ":"))
+		cleaned = strings.TrimSpace(strings.TrimPrefix(cleaned, "-"))
+		cleaned = strings.TrimSpace(strings.TrimPrefix(cleaned, " "))
+		return cleaned
+	}
+	return result
+}
+
 // generateHTMLContent generates HTML email content
 func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, error) {
 	const htmlTemplate = `
@@ -75,9 +89,9 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
         body { font-family: Arial, sans-serif; margin: 20px; }
         .header { background-color: #f0f0f0; padding: 15px; border-radius: 5px; }
         .result { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
-        .entity { margin: 10px 0; padding: 10px; background-color: #f9f9f9; border-radius: 3px; }
-        .entity-name { font-weight: bold; color: #333; }
-        .entity-info { margin-top: 5px; color: #666; }
+        .entity { margin: 15px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #007bff; border-radius: 3px; }
+        .entity-name { font-weight: bold; color: #007bff; font-size: 16px; margin-bottom: 8px; }
+        .entity-info { color: #333; line-height: 1.5; }
         .error { color: #d32f2f; background-color: #ffebee; padding: 10px; border-radius: 3px; }
         .summary { background-color: #e8f5e8; padding: 10px; border-radius: 3px; margin-top: 10px; }
     </style>
@@ -102,7 +116,7 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
             {{range $entity, $info := .Entities}}
             <div class="entity">
                 <div class="entity-name">{{$entity}}</div>
-                <div class="entity-info">{{$info}}</div>
+                <div class="entity-info">{{cleanEntityResult $entity $info}}</div>
             </div>
             {{end}}
         {{end}}
@@ -118,7 +132,9 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
 </body>
 </html>`
 
-	tmpl, err := template.New("email").Parse(htmlTemplate)
+	tmpl, err := template.New("email").Funcs(template.FuncMap{
+		"cleanEntityResult": s.cleanEntityResult,
+	}).Parse(htmlTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
 	}

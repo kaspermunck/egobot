@@ -28,6 +28,59 @@ func TestNewEmailSender(t *testing.T) {
 	}
 }
 
+func TestEmailSender_CleanEntityResult(t *testing.T) {
+	sender := NewEmailSender(&SenderConfig{})
+
+	tests := []struct {
+		entityName string
+		result     string
+		expected   string
+	}{
+		{
+			entityName: "4720 Præstø",
+			result:     "4720 Præstø Dødsdato: N/A Skifteret: Retten i Sønderborg",
+			expected:   "Dødsdato: N/A Skifteret: Retten i Sønderborg",
+		},
+		{
+			entityName: "CPR-nr.: 2704430690",
+			result:     "CPR-nr.: 2704430690 Adresse: 4720 Præstø Dødsdato: N/A",
+			expected:   "Adresse: 4720 Præstø Dødsdato: N/A",
+		},
+		{
+			entityName: "Stephen Richard Grieves",
+			result:     "Stephen Richard Grieves CPR-nr.: 2704430690 Adresse: 4720 Præstø",
+			expected:   "CPR-nr.: 2704430690 Adresse: 4720 Præstø",
+		},
+		{
+			entityName: "Højbjerg",
+			result:     "Højbjerg Dødsdato: 25.06.2025 Skifteret: Retten i Sønderborg",
+			expected:   "Dødsdato: 25.06.2025 Skifteret: Retten i Sønderborg",
+		},
+		{
+			entityName: "Test Entity",
+			result:     "Some other text that doesn't start with the entity",
+			expected:   "Some other text that doesn't start with the entity",
+		},
+		{
+			entityName: "Test Entity",
+			result:     "Test Entity: Some information",
+			expected:   "Some information",
+		},
+		{
+			entityName: "Test Entity",
+			result:     "Test Entity - Some information",
+			expected:   "Some information",
+		},
+	}
+
+	for i, test := range tests {
+		cleaned := sender.cleanEntityResult(test.entityName, test.result)
+		if cleaned != test.expected {
+			t.Errorf("Test %d: Expected '%s', got '%s'", i+1, test.expected, cleaned)
+		}
+	}
+}
+
 func TestEmailSender_GenerateHTMLContent(t *testing.T) {
 	sender := NewEmailSender(&SenderConfig{})
 
