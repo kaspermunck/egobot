@@ -215,6 +215,11 @@ func extractRelevantSections(text string, entities []string) string {
 		}
 
 		// Also include sentences with business keywords
+		// We include sentences containing business keywords (like bankruptcy, death estate, etc.)
+		// because they often provide important context about the entities we're tracking, even if
+		// the entities aren't directly mentioned in those sentences. For example, a sentence with
+		// "dødsbo" (death estate) might explain what happened to a person we're tracking, while
+		// a sentence with "konkurs" (bankruptcy) might explain what happened to their business.
 		businessKeywords := []string{
 			"frivillig likvidation", "dødsbo", "konkurs", "tvangsauktion", "fusion",
 			"skifteret", "sagsnummer", "cpr", "cvr", "adresse", "dødsdato",
@@ -391,16 +396,23 @@ func ExtractEntitiesFromPDFFile(ctx context.Context, file io.Reader, filename st
 	// 6. Process with GPT-3.5-turbo
 	log.Printf("Processing document with GPT-3.5-turbo (%d characters)", len(textToProcess))
 
-	entityList := strings.Join(entities, "\n")
+	entityList := strings.Join(entities, "\n- ")
+	if len(entityList) > 0 {
+		entityList = "- " + entityList
+	}
 	allResults := make(ExtractionResult)
 
 	// Use the Danish prompt for Statstidende analysis
-	userPrompt := fmt.Sprintf(`I Statstidende optages alle meddelelser, som i henhold til lovgivningen skal kundgøres, herunder dødsboer, tvangsauktioner, gældssanering m.m. Du skal ekstrahere og opsummere alle relevante oplysninger ud fra følgende nøgleord:
+	userPrompt := fmt.Sprintf(`Du er advokat med speciale i konkursboer, dødsboer og tvangsauktioner. Du forstår hvilken information der er relevant for hver type af sag. Analyser denne udgave af statstidende og find relevant info for de adresser (herunder postnumre, bynavne), personnavne, cpr-numre, virkosmhedsnavne, og cvr-numre, som jeg giver dig. Medtag udelukkende følgende information for hver sagstype:
+- Dødsboer: navn, cpr, adresse, dødsdato
+- Konkursboer: virksomhedsnavn, cvr, hvornår konkursbegæring er modtaget
+- Tvangsauktioner: matrikel og/eller adresse på ejendom
 
+Find relevant information for følgende:
 %s
 
-Vigtigt: Medtag også forekomster, hvor nøgleordene kun optræder som en del af en adresse (f.eks. et postnummer eller bynavn nævnt alene). Oplys kortfattet navn, CPR/CVR, adresse, dødsdato (hvis relevant), skifteret/sagsnummer og evt. behandlingstype (f.eks. insolvent/§ 69), samt hvordan og hvornår krav skal anmeldes.
-
+Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og skal analyseres separat. Hvert punkt kan optræde flere gange (fx adresse der deles af virksomhed og person), medtag i de tilfælde alle matches.
+	
 Dokument:
 %s`, entityList, textToProcess)
 
