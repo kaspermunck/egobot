@@ -11,10 +11,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"egobot/internal/pdf"
-
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // ExtractionResult maps each entity to its extracted information.
@@ -22,7 +18,7 @@ type ExtractionResult map[string]string
 
 // ExtractEntitiesFromPDFURL uses OpenAI's file_url parameter to analyze PDFs directly from URLs
 func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResult, error) {
-	log.Printf("Starting PDF analysis for URL: %s, entities: %v", pdfURL, entities)
+	log.Printf("Starting PDF analysis for URL: %s", pdfURL)
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -35,41 +31,42 @@ func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []st
 		entityList = "- " + entityList
 	}
 
+	log.Printf("Entities to look for: \n%s", entityList)
+
 	// Use the Danish prompt for Statstidende analysis
 	userPrompt := fmt.Sprintf(`Du er advokat med speciale i konkursboer, dødsboer og tvangsauktioner. Du forstår hvilken information der er relevant for hver type af sag. Analyser denne udgave af statstidende og find relevant info for de adresser (herunder postnumre, bynavne), personnavne, cpr-numre, virkosmhedsnavne, og cvr-numre, som jeg giver dig. Medtag udelukkende følgende information for hver sagstype:
-- Dødsboer: navn, cpr, adresse, dødsdato
-- Konkursboer: virksomhedsnavn, cvr, hvornår konkursbegæring er modtaget
-- Tvangsauktioner: matrikel og/eller adresse på ejendom
+	- Dødsboer: navn, cpr, adresse, dødsdato
+	- Konkursboer: virksomhedsnavn, cvr, hvornår konkursbegæring er modtaget
+	- Tvangsauktioner: matrikel og/eller adresse på ejendom
 
-Find relevant information for følgende:
-%s
+	Find relevant information for følgende:
+	%s
 
-Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og skal analyseres separat. Hvert punkt kan optræde flere gange (fx adresse der deles af virksomhed og person), medtag i de tilfælde alle matches.`, entityList)
+	Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og skal analyseres separat. Hvert punkt kan optræde flere gange (fx adresse der deles af virksomhed og person), medtag i de tilfælde alle matches.`, entityList)
 
 	// Create HTTP client
 	client := &http.Client{
 		Timeout: 60 * time.Second,
 	}
 
-	// Prepare the request payload using the file_url parameter
+	// Prepare the request payload using the new Responses API format
 	requestBody := map[string]interface{}{
-		"model": "gpt-3.5-turbo",
-		"messages": []map[string]interface{}{
+		"model": "gpt-4o",
+		"input": []map[string]interface{}{
 			{
 				"role": "user",
 				"content": []map[string]interface{}{
 					{
-						"type": "input_text",
-						"text": userPrompt,
-					},
-					{
 						"type":     "input_file",
 						"file_url": pdfURL,
+					},
+					{
+						"type": "input_text",
+						"text": userPrompt,
 					},
 				},
 			},
 		},
-		"max_tokens": 4000,
 	}
 
 	// Convert to JSON
@@ -79,7 +76,7 @@ Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og 
 	}
 
 	// Create request
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/responses", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -145,25 +142,41 @@ Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og 
 			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 
-		// Extract the answer
-		choices, ok := response["choices"].([]interface{})
-		if !ok || len(choices) == 0 {
-			return nil, fmt.Errorf("no choices in response")
+		// Check for API-level errors in the response
+		if errorField, exists := response["error"]; exists && errorField != nil {
+			return nil, fmt.Errorf("OpenAI API returned error: %v", errorField)
 		}
 
-		choice, ok := choices[0].(map[string]interface{})
+		// Check if response is completed
+		status, ok := response["status"].(string)
+		if !ok || status != "completed" {
+			return nil, fmt.Errorf("response not completed, status: %v", status)
+		}
+
+		// Extract the answer from the new Responses API format
+		output, ok := response["output"].([]interface{})
+		if !ok || len(output) == 0 {
+			return nil, fmt.Errorf("no output in response")
+		}
+
+		outputItem, ok := output[0].(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("invalid choice format")
+			return nil, fmt.Errorf("invalid output format")
 		}
 
-		message, ok := choice["message"].(map[string]interface{})
-		if !ok {
-			return nil, fmt.Errorf("invalid message format")
+		content, ok := outputItem["content"].([]interface{})
+		if !ok || len(content) == 0 {
+			return nil, fmt.Errorf("no content in output")
 		}
 
-		answer, ok := message["content"].(string)
+		contentItem, ok := content[0].(map[string]interface{})
 		if !ok {
 			return nil, fmt.Errorf("invalid content format")
+		}
+
+		answer, ok := contentItem["text"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid text format")
 		}
 
 		log.Printf("Received answer, length: %d", len(answer))
@@ -307,155 +320,7 @@ func findEntityInText(text, entity string) bool {
 
 // ExtractEntitiesFromPDFFile uses comprehensive document processing with early termination
 func ExtractEntitiesFromPDFFile(ctx context.Context, file io.Reader, filename string, entities []string) (ExtractionResult, error) {
-	log.Printf("Starting PDF analysis for file: %s, entities: %v", filename, entities)
-
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
-	}
-
-	// 1. Extract text from PDF
-	log.Printf("Extracting text from PDF")
-	pdfText, err := pdf.ExtractText(file)
-	if err != nil {
-		log.Printf("PDF text extraction error: %v", err)
-		return nil, fmt.Errorf("failed to extract text from PDF: %w", err)
-	}
-	log.Printf("Extracted %d characters from PDF", len(pdfText))
-
-	// 2. Check if entities are in the text using robust matching
-	log.Printf("Checking if entities are present in the document")
-	entitiesFound := false
-	for _, entity := range entities {
-		if findEntityInText(pdfText, entity) {
-			log.Printf("Entity '%s' found in document", entity)
-			entitiesFound = true
-			break
-		} else {
-			log.Printf("Entity '%s' NOT found in document", entity)
-		}
-	}
-
-	// 3. Early termination if no entities found
-	if !entitiesFound {
-		log.Printf("No entities found in document, returning early with 'No information found' for all entities")
-		allResults := make(ExtractionResult)
-		for _, entity := range entities {
-			allResults[entity] = "No information found."
-		}
-		return allResults, nil
-	}
-
-	// 4. Use aggressive sentence-level filtering to reduce token usage
-	log.Printf("Entities found, extracting only relevant sentences to minimize token usage")
-	textToProcess := extractRelevantSections(pdfText, entities)
-	log.Printf("Sentence extraction result: %d characters", len(textToProcess))
-
-	// 5. If still too long, use even more aggressive filtering
-	if len(textToProcess) > 8000 { // Conservative limit for GPT-3.5-turbo
-		log.Printf("Text still too long (%d chars), applying ultra-aggressive filtering", len(textToProcess))
-		textToProcess = extractUltraRelevantContent(textToProcess, entities)
-		log.Printf("Ultra-aggressive filtering result: %d characters", len(textToProcess))
-	}
-
-	// 6. Process with GPT-3.5-turbo
-	log.Printf("Processing document with GPT-3.5-turbo (%d characters)", len(textToProcess))
-
-	entityList := strings.Join(entities, "\n- ")
-	if len(entityList) > 0 {
-		entityList = "- " + entityList
-	}
-	allResults := make(ExtractionResult)
-
-	// Use the Danish prompt for Statstidende analysis
-	userPrompt := fmt.Sprintf(`Du er advokat med speciale i konkursboer, dødsboer og tvangsauktioner. Du forstår hvilken information der er relevant for hver type af sag. Analyser denne udgave af statstidende og find relevant info for de adresser (herunder postnumre, bynavne), personnavne, cpr-numre, virkosmhedsnavne, og cvr-numre, som jeg giver dig. Medtag udelukkende følgende information for hver sagstype:
-- Dødsboer: navn, cpr, adresse, dødsdato
-- Konkursboer: virksomhedsnavn, cvr, hvornår konkursbegæring er modtaget
-- Tvangsauktioner: matrikel og/eller adresse på ejendom
-
-Find relevant information for følgende:
-%s
-
-Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og skal analyseres separat. Hvert punkt kan optræde flere gange (fx adresse der deles af virksomhed og person), medtag i de tilfælde alle matches.
-	
-Dokument:
-%s`, entityList, textToProcess)
-
-	// Use GPT-3.5-turbo (higher rate limits: 90k TPM vs 30k TPM)
-	client := openai.NewClient(apiKey)
-
-	// Initial delay
-	delay := 1 * time.Second
-	maxRetries := 3
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			log.Printf("Attempt %d/%d, waiting %v before retry...", attempt+1, maxRetries, delay)
-			time.Sleep(delay)
-		}
-
-		resp, err := client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-			Model: openai.GPT3Dot5Turbo,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    openai.ChatMessageRoleUser,
-					Content: userPrompt,
-				},
-			},
-			MaxTokens: 4000,
-		})
-
-		if err != nil {
-			log.Printf("OpenAI chat completion error (attempt %d): %v", attempt+1, err)
-
-			// Check if it's a rate limit error
-			if strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "rate limit") || strings.Contains(err.Error(), "Too Many Requests") {
-				if attempt < maxRetries-1 {
-					// Exponential backoff: double the delay for next attempt
-					delay = delay * 2
-					if delay > 60*time.Second {
-						delay = 60 * time.Second // Cap at 60 seconds
-					}
-					continue
-				} else {
-					return nil, fmt.Errorf("rate limit exceeded after %d retries: %w", maxRetries, err)
-				}
-			} else {
-				return nil, fmt.Errorf("failed to get chat completion: %w", err)
-			}
-		}
-
-		if len(resp.Choices) == 0 {
-			log.Printf("No response from OpenAI")
-			return nil, fmt.Errorf("no response from OpenAI")
-		}
-
-		answer := resp.Choices[0].Message.Content
-		log.Printf("Received answer, length: %d", len(answer))
-
-		// Parse results - look for each entity in the response
-		for _, entity := range entities {
-			if idx := strings.Index(strings.ToLower(answer), strings.ToLower(entity)); idx != -1 {
-				rest := answer[idx:]
-				end := strings.Index(rest, "\n\n")
-				if end == -1 {
-					end = len(rest)
-				}
-				entityInfo := strings.TrimSpace(rest[:end])
-
-				// Set the result for this entity
-				allResults[entity] = entityInfo
-			} else {
-				// Entity not found in response
-				allResults[entity] = "No information found."
-			}
-		}
-
-		log.Printf("Extraction completed, found info for %d entities", len(allResults))
-		return allResults, nil
-	}
-
-	return nil, fmt.Errorf("failed to process document after %d attempts", maxRetries)
+	panic("this should not be called")
 }
 
 // extractUltraRelevantContent extracts only the most relevant content containing the target entities
