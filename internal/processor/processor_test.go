@@ -55,11 +55,14 @@ func (m *MockExtractor) ExtractEntitiesFromPDFFile(ctx context.Context, file int
 	return m.results, nil
 }
 
-func (m *MockExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResult, error) {
+func (m *MockExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResponse, error) {
 	if m.err != nil {
-		return nil, m.err
+		return ai.ExtractionResponse{}, m.err
 	}
-	return m.results, nil
+	return ai.ExtractionResponse{
+		Results:     m.results,
+		RawResponse: "Mock raw response for testing",
+	}, nil
 }
 
 func TestNewProcessor(t *testing.T) {

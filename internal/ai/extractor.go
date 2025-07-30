@@ -16,13 +16,19 @@ import (
 // ExtractionResult maps each entity to its extracted information.
 type ExtractionResult map[string]string
 
+// ExtractionResponse contains both the parsed results and the raw OpenAI response
+type ExtractionResponse struct {
+	Results     ExtractionResult
+	RawResponse string
+}
+
 // ExtractEntitiesFromPDFURL uses OpenAI's file_url parameter to analyze PDFs directly from URLs
-func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResult, error) {
+func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResponse, error) {
 	log.Printf("Starting PDF analysis for URL: %s", pdfURL)
 
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
+		return ExtractionResponse{}, fmt.Errorf("OPENAI_API_KEY environment variable not set")
 	}
 
 	// Create the entity list for the prompt
@@ -51,7 +57,7 @@ func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []st
 
 	// Prepare the request payload using the new Responses API format
 	requestBody := map[string]interface{}{
-		"model": "gpt-4o",
+		"model": "gpt-4o-mini", // 200k tokens per minut limit (should be enough for 1000 pages)
 		"input": []map[string]interface{}{
 			{
 				"role": "user",
@@ -72,13 +78,13 @@ func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []st
 	// Convert to JSON
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return ExtractionResponse{}, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/responses", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return ExtractionResponse{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	// Set headers
@@ -106,14 +112,14 @@ func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []st
 				}
 				continue
 			}
-			return nil, fmt.Errorf("failed to make HTTP request: %w", err)
+			return ExtractionResponse{}, fmt.Errorf("failed to make HTTP request: %w", err)
 		}
 		defer resp.Body.Close()
 
 		// Read response
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read response body: %w", err)
+			return ExtractionResponse{}, fmt.Errorf("failed to read response body: %w", err)
 		}
 
 		// Check if request was successful
@@ -129,54 +135,54 @@ func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []st
 					}
 					continue
 				} else {
-					return nil, fmt.Errorf("rate limit exceeded after %d retries", maxRetries)
+					return ExtractionResponse{}, fmt.Errorf("rate limit exceeded after %d retries", maxRetries)
 				}
 			} else {
-				return nil, fmt.Errorf("OpenAI API error: HTTP %d - %s", resp.StatusCode, string(body))
+				return ExtractionResponse{}, fmt.Errorf("OpenAI API error: HTTP %d - %s", resp.StatusCode, string(body))
 			}
 		}
 
 		// Parse response
 		var response map[string]interface{}
 		if err := json.Unmarshal(body, &response); err != nil {
-			return nil, fmt.Errorf("failed to parse response: %w", err)
+			return ExtractionResponse{}, fmt.Errorf("failed to parse response: %w", err)
 		}
 
 		// Check for API-level errors in the response
 		if errorField, exists := response["error"]; exists && errorField != nil {
-			return nil, fmt.Errorf("OpenAI API returned error: %v", errorField)
+			return ExtractionResponse{}, fmt.Errorf("OpenAI API returned error: %v", errorField)
 		}
 
 		// Check if response is completed
 		status, ok := response["status"].(string)
 		if !ok || status != "completed" {
-			return nil, fmt.Errorf("response not completed, status: %v", status)
+			return ExtractionResponse{}, fmt.Errorf("response not completed, status: %v", status)
 		}
 
 		// Extract the answer from the new Responses API format
 		output, ok := response["output"].([]interface{})
 		if !ok || len(output) == 0 {
-			return nil, fmt.Errorf("no output in response")
+			return ExtractionResponse{}, fmt.Errorf("no output in response")
 		}
 
 		outputItem, ok := output[0].(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("invalid output format")
+			return ExtractionResponse{}, fmt.Errorf("invalid output format")
 		}
 
 		content, ok := outputItem["content"].([]interface{})
 		if !ok || len(content) == 0 {
-			return nil, fmt.Errorf("no content in output")
+			return ExtractionResponse{}, fmt.Errorf("no content in output")
 		}
 
 		contentItem, ok := content[0].(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("invalid content format")
+			return ExtractionResponse{}, fmt.Errorf("invalid content format")
 		}
 
 		answer, ok := contentItem["text"].(string)
 		if !ok {
-			return nil, fmt.Errorf("invalid text format")
+			return ExtractionResponse{}, fmt.Errorf("invalid text format")
 		}
 
 		log.Printf("Received answer, length: %d", len(answer))
@@ -201,10 +207,13 @@ func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []st
 		}
 
 		log.Printf("Extraction completed, found info for %d entities", len(allResults))
-		return allResults, nil
+		return ExtractionResponse{
+			Results:     allResults,
+			RawResponse: answer,
+		}, nil
 	}
 
-	return nil, fmt.Errorf("failed to process document after %d attempts", maxRetries)
+	return ExtractionResponse{}, fmt.Errorf("failed to process document after %d attempts", maxRetries)
 }
 
 // extractRelevantSections extracts only sections that contain the target entities

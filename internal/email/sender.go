@@ -60,6 +60,7 @@ type AnalysisResult struct {
 	EmailFrom    string
 	EmailDate    time.Time
 	Entities     ai.ExtractionResult
+	RawResponse  string // Raw OpenAI response text
 	Error        string
 }
 
@@ -113,11 +114,18 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
             <strong>Error:</strong> {{.Error}}
         </div>
         {{else}}
-            {{range $entity, $info := .Entities}}
+            {{if .RawResponse}}
             <div class="entity">
-                <div class="entity-name">{{$entity}}</div>
-                <div class="entity-info">{{cleanEntityResult $entity $info}}</div>
+                <div class="entity-name">Analysis Results</div>
+                <div class="entity-info">{{.RawResponse}}</div>
             </div>
+            {{else}}
+                {{range $entity, $info := .Entities}}
+                <div class="entity">
+                    <div class="entity-name">{{$entity}}</div>
+                    <div class="entity-info">{{cleanEntityResult $entity $info}}</div>
+                </div>
+                {{end}}
             {{end}}
         {{end}}
     </div>

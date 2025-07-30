@@ -34,7 +34,7 @@ type EmailSender interface {
 // Extractor interface for AI extraction (allows both real and stubbed implementations)
 type Extractor interface {
 	ExtractEntitiesFromPDFFile(ctx context.Context, file interface{}, filename string, entities []string) (ai.ExtractionResult, error)
-	ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResult, error)
+	ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResponse, error)
 }
 
 // NewProcessor creates a new email processor
@@ -89,7 +89,7 @@ func (r *RealExtractor) ExtractEntitiesFromPDFFile(ctx context.Context, file int
 	return nil, fmt.Errorf("file is not an io.Reader")
 }
 
-func (r *RealExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResult, error) {
+func (r *RealExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResponse, error) {
 	return ai.ExtractEntitiesFromPDFURL(ctx, pdfURL, entities)
 }
 
@@ -151,14 +151,15 @@ func (p *Processor) processPDFURL(pdfURL string, emailMsg email.EmailMessage) em
 	defer cancel()
 
 	// Extract entities from PDF URL
-	entities, err := p.extractor.ExtractEntitiesFromPDFURL(ctx, pdfURL, p.config.EntitiesToTrack)
+	extractionResponse, err := p.extractor.ExtractEntitiesFromPDFURL(ctx, pdfURL, p.config.EntitiesToTrack)
 	if err != nil {
 		log.Printf("Failed to extract entities from %s: %v", pdfURL, err)
 		result.Error = fmt.Sprintf("Failed to extract entities: %v", err)
 		return result
 	}
 
-	result.Entities = entities
+	result.Entities = extractionResponse.Results
+	result.RawResponse = extractionResponse.RawResponse
 	log.Printf("Successfully extracted entities from %s", pdfURL)
 	return result
 }

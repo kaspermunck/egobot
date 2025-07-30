@@ -55,7 +55,7 @@ func (s *StubExtractor) ExtractEntitiesFromPDFFile(ctx context.Context, file int
 }
 
 // ExtractEntitiesFromPDFURL provides stubbed responses for URL-based PDF analysis
-func (s *StubExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResult, error) {
+func (s *StubExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResponse, error) {
 	log.Printf("STUB: Processing PDF URL: %s with entities: %v", pdfURL, entities)
 
 	// Simulate processing time
@@ -88,8 +88,17 @@ func (s *StubExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL st
 		result["summary"] = "Document processed successfully. No specific entities matched the search criteria."
 	}
 
+	// Create a realistic raw response
+	rawResponse := "Her er den relevante information:\n\n"
+	for entity, info := range result {
+		rawResponse += fmt.Sprintf("### %s\n%s\n\n", entity, info)
+	}
+
 	log.Printf("STUB: Generated results for %d entities from URL", len(result))
-	return result, nil
+	return ExtractionResponse{
+		Results:     result,
+		RawResponse: rawResponse,
+	}, nil
 }
 
 // ExtractEntitiesFromText provides stubbed responses for text analysis
