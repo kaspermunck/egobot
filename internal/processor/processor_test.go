@@ -3,7 +3,6 @@ package processor
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +49,13 @@ type MockExtractor struct {
 }
 
 func (m *MockExtractor) ExtractEntitiesFromPDFFile(ctx context.Context, file interface{}, filename string, entities []string) (ai.ExtractionResult, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.results, nil
+}
+
+func (m *MockExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResult, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -115,13 +121,7 @@ func TestProcessor_ProcessEmails_WithEmails(t *testing.T) {
 				Subject: "Test Email",
 				From:    "sender@example.com",
 				Date:    time.Now(),
-				Attachments: []email.Attachment{
-					{
-						Filename:    "test.pdf",
-						ContentType: "application/pdf",
-						Data:        strings.NewReader("fake pdf content"),
-					},
-				},
+				PDFURLs: []string{"https://example.com/test.pdf"},
 			},
 		},
 	}
@@ -152,8 +152,8 @@ func TestProcessor_ProcessEmails_WithEmails(t *testing.T) {
 	}
 
 	result := mockSender.sentResults[0]
-	if result.Filename != "test.pdf" {
-		t.Errorf("Expected filename 'test.pdf', got %s", result.Filename)
+	if result.Filename != "statstidende.pdf" {
+		t.Errorf("Expected filename 'statstidende.pdf', got %s", result.Filename)
 	}
 
 	if len(result.Entities) != 2 {
@@ -173,13 +173,7 @@ func TestProcessor_ProcessEmails_ExtractionError(t *testing.T) {
 				Subject: "Test Email",
 				From:    "sender@example.com",
 				Date:    time.Now(),
-				Attachments: []email.Attachment{
-					{
-						Filename:    "test.pdf",
-						ContentType: "application/pdf",
-						Data:        strings.NewReader("fake pdf content"),
-					},
-				},
+				PDFURLs: []string{"https://example.com/test.pdf"},
 			},
 		},
 	}

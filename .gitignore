@@ -55,4 +55,7 @@ dist/
 
 # Sample files (if you want to exclude them)
 samle_email.rtfd/
-statstidende_sample.pdf 
+statstidende_sample.pdf
+
+# Standalone test utilities
+test_*.go 

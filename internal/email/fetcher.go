@@ -24,6 +24,7 @@ type EmailMessage struct {
 	From           string
 	Date           time.Time
 	Attachments    []Attachment
+	PDFURLs        []string        // PDF URLs found in the email
 	processedLinks map[string]bool // Track processed PDF links to avoid duplicates
 }
 
@@ -116,7 +117,7 @@ func (f *EmailFetcher) FetchPDFEmails() ([]EmailMessage, error) {
 			log.Printf("Error processing message: %v", err)
 			continue
 		}
-		if len(emailMsg.Attachments) > 0 {
+		if len(emailMsg.PDFURLs) > 0 {
 			emailMessages = append(emailMessages, emailMsg)
 		}
 	}
@@ -125,7 +126,7 @@ func (f *EmailFetcher) FetchPDFEmails() ([]EmailMessage, error) {
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	log.Printf("Successfully processed %d emails with PDF links", len(emailMessages))
+	log.Printf("Successfully processed %d emails with PDF URLs", len(emailMessages))
 	return emailMessages, nil
 }
 
@@ -137,6 +138,7 @@ func (f *EmailFetcher) processMessage(msg *imap.Message) (EmailMessage, error) {
 		From:           f.formatAddress(msg.Envelope.From),
 		Date:           msg.Envelope.Date,
 		Attachments:    []Attachment{},
+		PDFURLs:        []string{},            // Initialize PDF URLs slice
 		processedLinks: make(map[string]bool), // Initialize the processed links map
 	}
 
@@ -323,21 +325,8 @@ func (f *EmailFetcher) extractPDFLinks(entity *mail.Message, emailMsg *EmailMess
 
 		log.Printf("Found PDF link: %s", link)
 
-		// Download the PDF
-		pdfData, err := f.downloadPDF(link)
-		if err != nil {
-			log.Printf("Failed to download PDF from %s: %v", link, err)
-			continue
-		}
-
-		// Create attachment from downloaded PDF
-		attachment := Attachment{
-			Filename:    "statstidende.pdf",
-			ContentType: "application/pdf",
-			Data:        bytes.NewReader(pdfData),
-		}
-		emailMsg.Attachments = append(emailMsg.Attachments, attachment)
-		log.Printf("Successfully downloaded PDF from: %s", link)
+		// Add URL to the PDFURLs slice instead of downloading
+		emailMsg.PDFURLs = append(emailMsg.PDFURLs, link)
 	}
 
 	return nil
@@ -366,21 +355,8 @@ func (f *EmailFetcher) extractPDFLinksFromPart(part *multipart.Part, emailMsg *E
 
 		log.Printf("Found PDF link: %s", link)
 
-		// Download the PDF
-		pdfData, err := f.downloadPDF(link)
-		if err != nil {
-			log.Printf("Failed to download PDF from %s: %v", link, err)
-			continue
-		}
-
-		// Create attachment from downloaded PDF
-		attachment := Attachment{
-			Filename:    "statstidende.pdf",
-			ContentType: "application/pdf",
-			Data:        bytes.NewReader(pdfData),
-		}
-		emailMsg.Attachments = append(emailMsg.Attachments, attachment)
-		log.Printf("Successfully downloaded PDF from: %s", link)
+		// Add URL to the PDFURLs slice instead of downloading
+		emailMsg.PDFURLs = append(emailMsg.PDFURLs, link)
 	}
 
 	return nil

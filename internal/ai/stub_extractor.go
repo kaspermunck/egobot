@@ -54,6 +54,44 @@ func (s *StubExtractor) ExtractEntitiesFromPDFFile(ctx context.Context, file int
 	return result, nil
 }
 
+// ExtractEntitiesFromPDFURL provides stubbed responses for URL-based PDF analysis
+func (s *StubExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResult, error) {
+	log.Printf("STUB: Processing PDF URL: %s with entities: %v", pdfURL, entities)
+
+	// Simulate processing time
+	time.Sleep(100 * time.Millisecond)
+
+	// Generate realistic fake responses based on entities
+	result := make(ExtractionResult)
+
+	for _, entity := range entities {
+		entityLower := strings.ToLower(entity)
+
+		switch {
+		case strings.Contains(entityLower, "danske"):
+			result[entity] = "Danske Bank: No significant changes reported in this document. The bank continues normal operations."
+		case strings.Contains(entityLower, "fintech"):
+			result[entity] = "Fintech: Several fintech companies mentioned in regulatory updates. New compliance requirements for digital payment services."
+		case strings.Contains(entityLower, "bankruptcy"):
+			result[entity] = "Bankruptcy: Three companies filed for bankruptcy protection this period. All cases are under court supervision."
+		case strings.Contains(entityLower, "12345678"):
+			result[entity] = "VAT 12345678: Company with this VAT number has updated their board composition. New CEO appointed effective next month."
+		case strings.Contains(entityLower, "john doe"):
+			result[entity] = "John Doe: No specific mentions found for this individual in the current document."
+		default:
+			result[entity] = fmt.Sprintf("%s: Limited information available. Recommend checking previous documents for historical data.", entity)
+		}
+	}
+
+	// Add a summary if no specific entities found
+	if len(result) == 0 {
+		result["summary"] = "Document processed successfully. No specific entities matched the search criteria."
+	}
+
+	log.Printf("STUB: Generated results for %d entities from URL", len(result))
+	return result, nil
+}
+
 // ExtractEntitiesFromText provides stubbed responses for text analysis
 func (s *StubExtractor) ExtractEntitiesFromText(ctx context.Context, text string, entities []string) (ExtractionResult, error) {
 	log.Printf("STUB: Processing text (%d chars) with entities: %v", len(text), entities)

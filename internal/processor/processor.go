@@ -34,6 +34,7 @@ type EmailSender interface {
 // Extractor interface for AI extraction (allows both real and stubbed implementations)
 type Extractor interface {
 	ExtractEntitiesFromPDFFile(ctx context.Context, file interface{}, filename string, entities []string) (ai.ExtractionResult, error)
+	ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResult, error)
 }
 
 // NewProcessor creates a new email processor
@@ -88,11 +89,15 @@ func (r *RealExtractor) ExtractEntitiesFromPDFFile(ctx context.Context, file int
 	return nil, fmt.Errorf("file is not an io.Reader")
 }
 
+func (r *RealExtractor) ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ai.ExtractionResult, error) {
+	return ai.ExtractEntitiesFromPDFURL(ctx, pdfURL, entities)
+}
+
 // ProcessEmails fetches emails, analyzes PDFs, and sends results
 func (p *Processor) ProcessEmails() error {
 	log.Printf("Starting email processing at %s", time.Now().Format("2006-01-02 15:04:05"))
 
-	// 1. Fetch emails with PDF attachments
+	// 1. Fetch emails with PDF URLs
 	emailMessages, err := p.fetcher.FetchPDFEmails()
 	if err != nil {
 		log.Printf("Failed to fetch emails: %v", err)
@@ -100,19 +105,19 @@ func (p *Processor) ProcessEmails() error {
 	}
 
 	if len(emailMessages) == 0 {
-		log.Printf("No emails with PDF attachments found")
+		log.Printf("No emails with PDF URLs found")
 		return nil
 	}
 
-	log.Printf("Found %d emails with PDF attachments", len(emailMessages))
+	log.Printf("Found %d emails with PDF URLs", len(emailMessages))
 
-	// 2. Process each email and its attachments
+	// 2. Process each email and its PDF URLs
 	var analysisResults []email.AnalysisResult
 	for _, emailMsg := range emailMessages {
 		log.Printf("Processing email: %s (from %s)", emailMsg.Subject, emailMsg.From)
 
-		for _, attachment := range emailMsg.Attachments {
-			result := p.processAttachment(attachment, emailMsg)
+		for _, pdfURL := range emailMsg.PDFURLs {
+			result := p.processPDFURL(pdfURL, emailMsg)
 			analysisResults = append(analysisResults, result)
 		}
 	}
@@ -130,31 +135,31 @@ func (p *Processor) ProcessEmails() error {
 	return nil
 }
 
-// processAttachment processes a single PDF attachment
-func (p *Processor) processAttachment(attachment email.Attachment, emailMsg email.EmailMessage) email.AnalysisResult {
+// processPDFURL processes a single PDF URL
+func (p *Processor) processPDFURL(pdfURL string, emailMsg email.EmailMessage) email.AnalysisResult {
 	result := email.AnalysisResult{
-		Filename:     attachment.Filename,
+		Filename:     "statstidende.pdf", // Use a default filename since we're working with URLs
 		EmailSubject: emailMsg.Subject,
 		EmailFrom:    emailMsg.From,
 		EmailDate:    emailMsg.Date,
 	}
 
-	log.Printf("Analyzing PDF: %s", attachment.Filename)
+	log.Printf("Analyzing PDF from URL: %s", pdfURL)
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	// Extract entities from PDF
-	entities, err := p.extractor.ExtractEntitiesFromPDFFile(ctx, attachment.Data, attachment.Filename, p.config.EntitiesToTrack)
+	// Extract entities from PDF URL
+	entities, err := p.extractor.ExtractEntitiesFromPDFURL(ctx, pdfURL, p.config.EntitiesToTrack)
 	if err != nil {
-		log.Printf("Failed to extract entities from %s: %v", attachment.Filename, err)
+		log.Printf("Failed to extract entities from %s: %v", pdfURL, err)
 		result.Error = fmt.Sprintf("Failed to extract entities: %v", err)
 		return result
 	}
 
 	result.Entities = entities
-	log.Printf("Successfully extracted entities from %s", attachment.Filename)
+	log.Printf("Successfully extracted entities from %s", pdfURL)
 	return result
 }
 

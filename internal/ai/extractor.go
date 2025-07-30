@@ -1,10 +1,13 @@
 package ai
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -17,180 +20,178 @@ import (
 // ExtractionResult maps each entity to its extracted information.
 type ExtractionResult map[string]string
 
-// chunkText splits text into chunks of approximately maxTokens characters
-func chunkText(text string, maxTokens int) []string {
-	// Roughly 4 characters per token
-	maxChars := maxTokens * 4
-	if len(text) <= maxChars {
-		return []string{text}
+// ExtractEntitiesFromPDFURL uses OpenAI's file_url parameter to analyze PDFs directly from URLs
+func ExtractEntitiesFromPDFURL(ctx context.Context, pdfURL string, entities []string) (ExtractionResult, error) {
+	log.Printf("Starting PDF analysis for URL: %s, entities: %v", pdfURL, entities)
+
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
 	}
 
-	var chunks []string
-	for len(text) > 0 {
-		chunkSize := maxChars
-		if chunkSize > len(text) {
-			chunkSize = len(text)
+	// Create the entity list for the prompt
+	entityList := strings.Join(entities, "\n- ")
+	if len(entityList) > 0 {
+		entityList = "- " + entityList
+	}
+
+	// Use the Danish prompt for Statstidende analysis
+	userPrompt := fmt.Sprintf(`Du er advokat med speciale i konkursboer, dødsboer og tvangsauktioner. Du forstår hvilken information der er relevant for hver type af sag. Analyser denne udgave af statstidende og find relevant info for de adresser (herunder postnumre, bynavne), personnavne, cpr-numre, virkosmhedsnavne, og cvr-numre, som jeg giver dig. Medtag udelukkende følgende information for hver sagstype:
+- Dødsboer: navn, cpr, adresse, dødsdato
+- Konkursboer: virksomhedsnavn, cvr, hvornår konkursbegæring er modtaget
+- Tvangsauktioner: matrikel og/eller adresse på ejendom
+
+Find relevant information for følgende:
+%s
+
+Betragt hvert af punkterne isoleret, de har ikke noget med hinanden at gøre og skal analyseres separat. Hvert punkt kan optræde flere gange (fx adresse der deles af virksomhed og person), medtag i de tilfælde alle matches.`, entityList)
+
+	// Create HTTP client
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+
+	// Prepare the request payload using the file_url parameter
+	requestBody := map[string]interface{}{
+		"model": "gpt-3.5-turbo",
+		"messages": []map[string]interface{}{
+			{
+				"role": "user",
+				"content": []map[string]interface{}{
+					{
+						"type": "input_text",
+						"text": userPrompt,
+					},
+					{
+						"type":     "input_file",
+						"file_url": pdfURL,
+					},
+				},
+			},
+		},
+		"max_tokens": 4000,
+	}
+
+	// Convert to JSON
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// Initial delay
+	delay := 1 * time.Second
+	maxRetries := 3
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("Attempt %d/%d, waiting %v before retry...", attempt+1, maxRetries, delay)
+			time.Sleep(delay)
 		}
 
-		chunk := text[:chunkSize]
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("HTTP request error (attempt %d): %v", attempt+1, err)
+			if attempt < maxRetries-1 {
+				delay = delay * 2
+				if delay > 60*time.Second {
+					delay = 60 * time.Second
+				}
+				continue
+			}
+			return nil, fmt.Errorf("failed to make HTTP request: %w", err)
+		}
+		defer resp.Body.Close()
 
-		// Try to break at a sentence boundary
-		if lastPeriod := strings.LastIndex(chunk, "."); lastPeriod > chunkSize*3/4 {
-			chunk = chunk[:lastPeriod+1]
+		// Read response
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %w", err)
 		}
 
-		chunks = append(chunks, chunk)
-		text = text[len(chunk):]
-	}
+		// Check if request was successful
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("OpenAI API error (attempt %d): HTTP %d - %s", attempt+1, resp.StatusCode, string(body))
 
-	return chunks
-}
-
-// preFilterContent filters PDF content to only include relevant sections
-func preFilterContent(text string, entities []string) string {
-	// Convert entities to lowercase for case-insensitive matching
-	entityPatterns := make([]string, len(entities))
-	for i, entity := range entities {
-		entityPatterns[i] = strings.ToLower(entity)
-	}
-
-	// Split text into paragraphs
-	paragraphs := strings.Split(text, "\n\n")
-	var relevantParagraphs []string
-
-	for _, paragraph := range paragraphs {
-		paragraphLower := strings.ToLower(paragraph)
-
-		// Check if paragraph contains any of the entities
-		for _, entity := range entityPatterns {
-			if strings.Contains(paragraphLower, entity) {
-				relevantParagraphs = append(relevantParagraphs, paragraph)
-				break
+			// Check if it's a rate limit error
+			if resp.StatusCode == 429 {
+				if attempt < maxRetries-1 {
+					delay = delay * 2
+					if delay > 60*time.Second {
+						delay = 60 * time.Second
+					}
+					continue
+				} else {
+					return nil, fmt.Errorf("rate limit exceeded after %d retries", maxRetries)
+				}
+			} else {
+				return nil, fmt.Errorf("OpenAI API error: HTTP %d - %s", resp.StatusCode, string(body))
 			}
 		}
 
-		// Also include paragraphs that might contain relevant business information
-		// Look for keywords that indicate business events
-		businessKeywords := []string{
-			"frivillig likvidation", "dødsbo", "konkurs", "tvangsauktion", "fusion",
+		// Parse response
+		var response map[string]interface{}
+		if err := json.Unmarshal(body, &response); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 
-		for _, keyword := range businessKeywords {
-			if strings.Contains(paragraphLower, keyword) {
-				relevantParagraphs = append(relevantParagraphs, paragraph)
-				break
+		// Extract the answer
+		choices, ok := response["choices"].([]interface{})
+		if !ok || len(choices) == 0 {
+			return nil, fmt.Errorf("no choices in response")
+		}
+
+		choice, ok := choices[0].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid choice format")
+		}
+
+		message, ok := choice["message"].(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("invalid message format")
+		}
+
+		answer, ok := message["content"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid content format")
+		}
+
+		log.Printf("Received answer, length: %d", len(answer))
+
+		// Parse results - look for each entity in the response
+		allResults := make(ExtractionResult)
+		for _, entity := range entities {
+			if idx := strings.Index(strings.ToLower(answer), strings.ToLower(entity)); idx != -1 {
+				rest := answer[idx:]
+				end := strings.Index(rest, "\n\n")
+				if end == -1 {
+					end = len(rest)
+				}
+				entityInfo := strings.TrimSpace(rest[:end])
+
+				// Set the result for this entity
+				allResults[entity] = entityInfo
+			} else {
+				// Entity not found in response
+				allResults[entity] = "No information found."
 			}
 		}
+
+		log.Printf("Extraction completed, found info for %d entities", len(allResults))
+		return allResults, nil
 	}
 
-	// If we found relevant content, return it; otherwise return original text
-	if len(relevantParagraphs) > 0 {
-		filteredText := strings.Join(relevantParagraphs, "\n\n")
-		log.Printf("Pre-filtered content: %d paragraphs -> %d relevant paragraphs", len(paragraphs), len(relevantParagraphs))
-		return filteredText
-	}
-
-	log.Printf("No relevant content found, using original text")
-	return text
-}
-
-// aggressivePreFilterContent filters PDF content more aggressively to reduce token usage
-func aggressivePreFilterContent(text string, entities []string) string {
-	// Convert entities to lowercase for case-insensitive matching
-	entityPatterns := make([]string, len(entities))
-	for i, entity := range entities {
-		entityPatterns[i] = strings.ToLower(entity)
-	}
-
-	// Split text into sentences for more granular filtering
-	sentences := strings.Split(text, ". ")
-	var relevantSentences []string
-
-	for _, sentence := range sentences {
-		sentenceLower := strings.ToLower(sentence)
-
-		// Check if sentence contains any of the entities
-		for _, entity := range entityPatterns {
-			if strings.Contains(sentenceLower, entity) {
-				relevantSentences = append(relevantSentences, sentence)
-				break
-			}
-		}
-
-		// Also include sentences that might contain relevant business information
-		businessKeywords := []string{
-			"frivillig likvidation", "dødsbo", "konkurs", "tvangsauktion", "fusion",
-			"skifteret", "sagsnummer", "cpr", "cvr", "adresse", "dødsdato",
-		}
-
-		for _, keyword := range businessKeywords {
-			if strings.Contains(sentenceLower, keyword) {
-				relevantSentences = append(relevantSentences, sentence)
-				break
-			}
-		}
-	}
-
-	// If we found relevant content, return it; otherwise return a minimal version
-	if len(relevantSentences) > 0 {
-		filteredText := strings.Join(relevantSentences, ". ")
-		log.Printf("Aggressive pre-filtered content: %d sentences -> %d relevant sentences", len(strings.Split(text, ". ")), len(relevantSentences))
-		return filteredText
-	}
-
-	// If no relevant content found, return a minimal version with just the first 1000 characters
-	log.Printf("No relevant content found, using minimal text")
-	if len(text) > 1000 {
-		return text[:1000] + "..."
-	}
-	return text
-}
-
-// smartChunkText splits text into smaller, more focused chunks
-func smartChunkText(text string, maxTokens int) []string {
-	// Handle empty text
-	if len(strings.TrimSpace(text)) == 0 {
-		return []string{}
-	}
-
-	// Use smaller chunks to avoid rate limits
-	maxChars := maxTokens * 3 // More conservative estimate
-	if len(text) <= maxChars {
-		return []string{text}
-	}
-
-	var chunks []string
-	lines := strings.Split(text, "\n")
-	var currentChunk strings.Builder
-	currentLength := 0
-
-	for _, line := range lines {
-		lineLength := len(line)
-
-		// If adding this line would exceed the limit, start a new chunk
-		if currentLength+lineLength > maxChars && currentLength > 0 {
-			chunk := strings.TrimSpace(currentChunk.String())
-			if chunk != "" {
-				chunks = append(chunks, chunk)
-			}
-			currentChunk.Reset()
-			currentLength = 0
-		}
-
-		currentChunk.WriteString(line)
-		currentChunk.WriteString("\n")
-		currentLength += lineLength + 1
-	}
-
-	// Add the last chunk
-	if currentChunk.Len() > 0 {
-		chunk := strings.TrimSpace(currentChunk.String())
-		if chunk != "" {
-			chunks = append(chunks, chunk)
-		}
-	}
-
-	return chunks
+	return nil, fmt.Errorf("failed to process document after %d attempts", maxRetries)
 }
 
 // extractRelevantSections extracts only sections that contain the target entities
@@ -246,42 +247,6 @@ func extractRelevantSections(text string, entities []string) string {
 		return text[:1000]
 	}
 	return text
-}
-
-// truncateTextToTokenLimit truncates text to fit within token limits
-func truncateTextToTokenLimit(text string, maxTokens int) string {
-	// Rough estimate: 4 characters per token
-	maxChars := maxTokens * 3 // Conservative estimate
-
-	if len(text) <= maxChars {
-		return text
-	}
-
-	// Try to truncate at sentence boundaries
-	sentences := strings.Split(text, ". ")
-	if len(sentences) == 1 {
-		// No sentence boundaries, truncate directly
-		return text[:maxChars] + "..."
-	}
-
-	var result strings.Builder
-	charCount := 0
-
-	for _, sentence := range sentences {
-		sentenceWithPeriod := sentence + ". "
-		if charCount+len(sentenceWithPeriod) > maxChars {
-			break
-		}
-		result.WriteString(sentenceWithPeriod)
-		charCount += len(sentenceWithPeriod)
-	}
-
-	if result.Len() == 0 {
-		// If we couldn't fit even one sentence, truncate directly
-		return text[:maxChars] + "..."
-	}
-
-	return strings.TrimSpace(result.String())
 }
 
 // findEntityInText performs robust entity matching with various strategies
