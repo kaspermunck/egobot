@@ -105,10 +105,19 @@ func RunServer(lc fx.Lifecycle, router *gin.Engine) {
 	// Set up cron scheduler
 	scheduler := cron.New(cron.WithSeconds())
 
+	// Clean up any existing cron entries (in case of restart)
+	entries := scheduler.Entries()
+	log.Printf("Removing %d existing cron entries to ensure only one job is running", len(entries))
+	for _, entry := range entries {
+		scheduler.Remove(entry.ID)
+		log.Printf("🧹 Removed existing cron entry with ID %d", entry.ID)
+	}
+
 	// Use the schedule from config, or default to hourly for testing
 	cronSchedule := cfg.ScheduleCron
 	if cronSchedule == "" {
 		cronSchedule = "0 0 * * * *" // Every hour at minute 0, second 0
+		log.Printf("No cronSchedule found in config, using default: %s", cronSchedule)
 	}
 
 	log.Printf("🚀 Starting egobot service with internal cron")

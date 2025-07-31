@@ -29,8 +29,8 @@ func TestLoadConfig(t *testing.T) {
 	if !config.OpenAIStub {
 		t.Error("Expected OpenAIStub to be true by default")
 	}
-	if config.ScheduleCron != "0 9 * * *" {
-		t.Errorf("Expected schedule cron to be '0 9 * * *', got %s", config.ScheduleCron)
+	if config.ScheduleCron != "0 0 * * * *" {
+		t.Errorf("Expected schedule cron to be '0 0 * * * *', got %s", config.ScheduleCron)
 	}
 }
 
