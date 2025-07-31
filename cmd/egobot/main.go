@@ -115,15 +115,9 @@ func RunServer(lc fx.Lifecycle, router *gin.Engine) {
 
 	// Use the schedule from config, or default to hourly for testing
 	cronSchedule := cfg.ScheduleCron
-	if cronSchedule == "" {
-		cronSchedule = "0 0 * * * *" // Every hour at minute 0, second 0
-		log.Printf("No cronSchedule found in config, using default: %s", cronSchedule)
-	} else {
-		log.Printf("Using cron schedule found in config: %s", cronSchedule)
-	}
-
+	log.Printf("Using cron schedule found in config: %s", cronSchedule)
 	log.Printf("🚀 Starting egobot service with internal cron")
-	log.Printf("📅 Cron schedule: %s (Hourly for testing)", cronSchedule)
+	log.Printf("📅 Cron schedule: %s", cronSchedule)
 
 	entryID, err := scheduler.AddFunc(cronSchedule, func() {
 		log.Printf("🕕 Cron job triggered - running daily email processing")
