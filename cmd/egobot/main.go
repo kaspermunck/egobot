@@ -103,7 +103,7 @@ func RunServer(lc fx.Lifecycle, router *gin.Engine) {
 	proc := processor.NewProcessor(cfg)
 
 	// Set up cron scheduler
-	scheduler := cron.New(cron.WithSeconds())
+	scheduler := cron.New()
 
 	// Clean up any existing cron entries (in case of restart)
 	entries := scheduler.Entries()
