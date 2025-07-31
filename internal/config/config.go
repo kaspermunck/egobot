@@ -56,7 +56,7 @@ func Load() (*Config, error) {
 		SMTPTo:       getEnvOrDefault("SMTP_TO", ""),
 
 		EntitiesToTrack: getEnvSliceOrDefault("ENTITIES_TO_TRACK", []string{"pikkemand"}),
-		ScheduleCron:    getEnvOrDefault("SCHEDULE_CRON", "0 0 * * * *"), // Daily at 6 AM
+		ScheduleCron:    getEnvOrDefault("SCHEDULE_CRON", "0 6 * * * *"), // Daily at 6 AM
 		MaxRetries:      getEnvIntOrDefault("MAX_RETRIES", 3),
 		RetryDelay:      getEnvDurationOrDefault("RETRY_DELAY", 5*time.Minute),
 	}

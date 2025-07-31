@@ -118,6 +118,8 @@ func RunServer(lc fx.Lifecycle, router *gin.Engine) {
 	if cronSchedule == "" {
 		cronSchedule = "0 0 * * * *" // Every hour at minute 0, second 0
 		log.Printf("No cronSchedule found in config, using default: %s", cronSchedule)
+	} else {
+		log.Printf("Using cron schedule found in config: %s", cronSchedule)
 	}
 
 	log.Printf("🚀 Starting egobot service with internal cron")
