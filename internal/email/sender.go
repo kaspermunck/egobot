@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"egobot/internal/ai"
+
+	"github.com/gomarkdown/markdown"
 )
 
 // EmailSender handles SMTP email sending
@@ -93,6 +95,14 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
         .entity { margin: 15px 0; padding: 15px; background-color: #f8f9fa; border-left: 4px solid #007bff; border-radius: 3px; }
         .entity-name { font-weight: bold; color: #007bff; font-size: 16px; margin-bottom: 8px; }
         .entity-info { color: #333; line-height: 1.5; }
+        .entity-info h1, .entity-info h2, .entity-info h3, .entity-info h4, .entity-info h5, .entity-info h6 { 
+            color: #007bff; margin-top: 15px; margin-bottom: 10px; 
+        }
+        .entity-info h3 { font-size: 18px; }
+        .entity-info ul, .entity-info ol { margin: 10px 0; padding-left: 20px; }
+        .entity-info li { margin: 5px 0; }
+        .entity-info strong { font-weight: bold; color: #333; }
+        .entity-info em { font-style: italic; }
         .error { color: #d32f2f; background-color: #ffebee; padding: 10px; border-radius: 3px; }
         .summary { background-color: #e8f5e8; padding: 10px; border-radius: 3px; margin-top: 10px; }
     </style>
@@ -117,7 +127,7 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
             {{if .RawResponse}}
             <div class="entity">
                 <div class="entity-name">Analysis Results</div>
-                <div class="entity-info">{{.RawResponse}}</div>
+                <div class="entity-info">{{markdownToHTML .RawResponse}}</div>
             </div>
             {{else}}
                 {{range $entity, $info := .Entities}}
@@ -142,6 +152,7 @@ func (s *EmailSender) generateHTMLContent(results []AnalysisResult) (string, err
 
 	tmpl, err := template.New("email").Funcs(template.FuncMap{
 		"cleanEntityResult": s.cleanEntityResult,
+		"markdownToHTML":    s.convertMarkdownToHTML,
 	}).Parse(htmlTemplate)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template: %w", err)
@@ -249,4 +260,15 @@ func (s *EmailSender) SendErrorNotification(errorMsg string) error {
 </html>`, time.Now().Format("2006-01-02 15:04:05"), errorMsg)
 
 	return s.sendEmail(subject, htmlContent)
+}
+
+// convertMarkdownToHTML converts markdown text to HTML
+func (s *EmailSender) convertMarkdownToHTML(markdownText string) template.HTML {
+	if markdownText == "" {
+		return ""
+	}
+
+	// Convert markdown to HTML
+	htmlBytes := markdown.ToHTML([]byte(markdownText), nil, nil)
+	return template.HTML(string(htmlBytes))
 }
